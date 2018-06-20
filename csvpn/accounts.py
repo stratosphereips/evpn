@@ -1,0 +1,248 @@
+# -*- coding: utf-8 -*-
+#
+# This file is part of csvpn, a vpn manager for CivilSphere project.
+#
+# :authors: Israel Leiva <israel.leiva@usach.cl>
+#           see also AUTHORS file
+#
+# :copyright: (c) 2018, all entities within the AUTHORS file
+#
+# :license: This is Free Software. See LICENSE for license information.
+
+import os
+
+from datetime import datetime, timedelta
+from ConfigParser import ConfigParser
+
+from twisted.internet import defer, utils
+
+# local imports
+from utils import log, Base, IPError, ExecError
+
+
+
+class AccountError(Exception):
+    """ """
+    pass
+
+
+class Accounts(Base):
+    """ Accounts. """
+    def __init__(self, config_file):
+        """ """
+        config = ConfigParser()
+        config.read(config_file)
+
+        log.debug("ACCOUNTS:: Loading configuration values.")
+        self.path = {}
+        self.path['client-configs'] = config.get('path', 'client-configs')
+        self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
+
+        # for creating accounts with openvpn variables
+        self.env = {}
+        self.env['EASY_RA'] = config.get('env', 'EASY_RA')
+        self.env['OPENSSL'] = config.get('env', 'OPENSSL')
+        self.env['PKCS11TOOL'] = config.get('env', 'PKCS11TOOL')
+        self.env['GREP'] = config.get('env', 'GREP')
+        self.env['KEY_CONFIG'] = config.get('env', 'KEY_CONFIG')
+        self.env['KEY_DIR'] = config.get('env', 'KEY_DIR')
+        self.env['PKCS11_MODULE_PATH'] = config.get('env', 'PKCS11_MODULE_PATH')
+        self.env['PKCS11_PIN'] = config.get('env', 'PKCS11_PIN')
+
+        self.env['KEY_SIZE'] = config.get('env', 'KEY_SIZE')
+        self.env['CA_EXPIRE'] = config.get('env', 'CA_EXPIRE')
+        self.env['KEY_EXPIRE'] = config.get('env', 'KEY_EXPIRE')
+        self.env['KEY_COUNTRY'] = config.get('env', 'KEY_COUNTRY')
+        self.env['KEY_PROVINCE'] = config.get('env', 'KEY_PROVINCE')
+        self.env['KEY_CITY'] = config.get('env', 'KEY_CITY')
+        self.env['KEY_ORG'] = config.get('env', 'KEY_ORG')
+        self.env['KEY_EMAIL'] = config.get('env', 'KEY_EMAIL')
+        self.env['KEY_OU'] = config.get('env', 'KEY_OU')
+        self.env['KEY_NAME'] = config.get('env', 'KEY_NAME')
+
+        self.interval = float(config.get('general', 'interval'))
+
+        Base.__init__(self)
+
+    @defer.inlineCallbacks
+    def _generate_ip(self):
+        """ """
+        query = "select * from requests where ip_addr=? and status=?"
+        ip_addr = "10.0.0."
+        n = 0
+
+        for x in range(1, 255):
+            log.debug("ACCOUNTS:: Checking if 10.0.0.{} is taken.".format(x))
+            curr_ip = "10.0.0.{}".format(x)
+            response = yield self.dbpool.runQuery(query, (curr_ip, "ACTIVE")).\
+                addCallback(self.cb_db_query).addErrback(self.eb_db_query)
+            if not response:
+                n = x
+                ip_addr = ip_addr + str(x)
+                log.debug("ACCOUNTS:: Found {} available".format(ip_addr))
+                break
+
+        if n > 0:
+            defer.returnValue(ip_addr)
+        else:
+            log.debug("ACCOUNTS:: Could not find available IP!")
+            raise IPError("IP error")
+
+    def _create_key(self, username):
+        """ Create a new account key. """
+        log.debug("ACCOUNTS:: Creating key for {}.".format(username))
+
+        # TODO: replicate source vars
+        return utils.getProcessOutput(
+            "./build-key",
+            args=["--batch", username],
+            env=self.env,
+            path=self.path['openvpn-ca']
+        ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _create_profile(self, username, ip_addr):
+        """ Create a new OpenVPN profile. """
+        log.debug("ACCOUNTS:: Creating profile for {}.".format(username))
+
+        return utils.getProcessOutput(
+            "./make-config.sh",
+            # args=[username, ip_addr],
+            args=[username],
+            env=os.environ,
+            path=self.path['client-configs']
+        ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _start_traffic_capture(self, username, ip_addr):
+        """ Start capturing traffic. """
+        log.debug(
+            "ACCOUNTS:: Starting capture traffic for {} with IP {}.".format(
+                username, ip_addr
+            )
+        )
+
+        return utils.getProcessOutput(
+            'tcpdump',
+            args=[
+                "-i tun0", "host {}".format(ip_addr),
+                "-w pcaps/{}.pcap".format(username)
+            ],
+            env=os.environ,
+            path=self.path['client-configs']
+        ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _stop_traffic_capture(self):
+        """ """
+        pass
+
+    def _revoke_user(self, username):
+        """ Revoke OpenVPN user. """
+        log.debug("ACCOUNTS:: Revoking user {}.".format(username))
+
+        return utils.getProcessOutput(
+            './revoke-full',
+            args=[username],
+            env=self.env,
+            path=self.path['openvpn-ca']
+        ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _get_expired_requests(self):
+        """ Get requests with . """
+        query = 'select * from requests where status=? and expiration_date<?'
+
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        log.debug("ACCOUNTS:: Asking for active accounts that have expired.")
+
+        return self.dbpool.runQuery(query, ("ACTIVE", now_str)).\
+            addCallback(self.cb_db_query).\
+            addErrback(self.eb_db_query)
+
+    def _set_expiration_date(self, email_addr):
+        """ """
+        start_date_str = datetime.now().strftime("%Y-%m-%d")
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        exp_date = start_date + timedelta(days=3)
+        exp_date_str = exp_date.strftime("%Y-%m-%d")
+
+        query = "update requests set start date=?, \
+        expiration_date=? where email_addr=?"
+
+        log.debug(
+            "ACCOUNTS:: Setting start and expiration date to {}-{}.".format(
+                start_date_str, exp_date_str
+            )
+        )
+
+        return self.dbpool.runQuery(
+            query,
+            (start_date_str, exp_date_str, email_addr)
+        ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
+
+    @defer.inlineCallbacks
+    def _get_new(self):
+        """ """
+        new_requests = yield self._get_requests("ONHOLD")
+
+        if new_requests:
+            log.info("ACCOUNTS:: Got new requests for accounts.")
+            for request in new_requests:
+                email_addr = request[0]
+                username, domain = email_addr.split('@')
+                try:
+                    # set to IN_PROCESS
+                    log.info(
+                        "ACCOUNTS:: Processing request for {}".format(
+                            email_addr
+                        )
+                    )
+                    yield self._update_status(email_addr, "IN_PROCESS")
+                    # assign ip -> NO_IP_AVAILABLE
+                    ip = yield self._generate_ip()
+                    # create profile (ip, user) -> EXEC_ERROR
+                    yield self._create_profile(username, ip)
+                    # run tcpdump -> CAP_ERROR
+                    yield self._start_traffic_capture(username, ip)
+                    # calculate exp date
+                    yield self._set_expiration_date(email_addr)
+                    # set to ACTIVE_READY - profile ready to be sent
+                    yield self._update_status(email_addr, "ACTIVE_READY")
+                    log.info(
+                        "ACCOUNTS:: Account ready for {} with IP {}. Profile\
+                         .ovpn on queue to be sent to {}.".format(
+                            username, ip, email_addr
+                        )
+                    )
+                except IPError as error:
+                    log.info(
+                        "ACCOUNTS:: Error generating IP address: {}.".format(
+                            error
+                        )
+                    )
+                    yield self._update_status(email_addr, "NO_IP_AVAILABLE")
+                except ExecError as error:
+                    log.info(
+                        "ACCOUNTS:: Error executing system command.".format(
+                            error
+                        )
+                    )
+                    yield self._update_status(email_addr, "EXEC_ERROR")
+        else:
+            log.info("ACCOUNTS:: No requests - Keep waiting.")
+
+        expired = yield self._get_expired_requests()
+        if expired:
+            log.info("ACCOUNTS:: Got expired accounts.")
+            for request in expired:
+                email_addr = request[0]
+                username, domain = email_addr.split('@')
+                # stop traffic capture
+                # yield self._stop_traffic_capture()
+                yield self._revoke_user(username)
+                # update status
+                yield self._update_status(email_addr, "EXPIRED")
+                log.info(
+                    "ACCOUNTS:: Account {} revoked and set to expired.".format(
+                        username
+                    )
+                )
+        else:
+            log.info("ACCOUNTS:: No expired accounts - Keep waiting.")
