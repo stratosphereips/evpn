@@ -38,28 +38,7 @@ class Accounts(Base):
         self.path['client-configs'] = config.get('path', 'client-configs')
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
 
-        # for creating accounts with openvpn variables
-        self.env = {}
-        self.env['EASY_RA'] = config.get('env', 'EASY_RA')
-        self.env['OPENSSL'] = config.get('env', 'OPENSSL')
-        self.env['PKCS11TOOL'] = config.get('env', 'PKCS11TOOL')
-        self.env['GREP'] = config.get('env', 'GREP')
-        self.env['KEY_CONFIG'] = config.get('env', 'KEY_CONFIG')
-        self.env['KEY_DIR'] = config.get('env', 'KEY_DIR')
-        self.env['PKCS11_MODULE_PATH'] = config.get('env', 'PKCS11_MODULE_PATH')
-        self.env['PKCS11_PIN'] = config.get('env', 'PKCS11_PIN')
-
-        self.env['KEY_SIZE'] = config.get('env', 'KEY_SIZE')
-        self.env['CA_EXPIRE'] = config.get('env', 'CA_EXPIRE')
-        self.env['KEY_EXPIRE'] = config.get('env', 'KEY_EXPIRE')
-        self.env['KEY_COUNTRY'] = config.get('env', 'KEY_COUNTRY')
-        self.env['KEY_PROVINCE'] = config.get('env', 'KEY_PROVINCE')
-        self.env['KEY_CITY'] = config.get('env', 'KEY_CITY')
-        self.env['KEY_ORG'] = config.get('env', 'KEY_ORG')
-        self.env['KEY_EMAIL'] = config.get('env', 'KEY_EMAIL')
-        self.env['KEY_OU'] = config.get('env', 'KEY_OU')
-        self.env['KEY_NAME'] = config.get('env', 'KEY_NAME')
-
+        self.expiration_days = int(config.get('general', 'expiration_days'))
         self.interval = float(config.get('general', 'interval'))
 
         Base.__init__(self)
@@ -92,11 +71,10 @@ class Accounts(Base):
         """ Create a new account key. """
         log.debug("ACCOUNTS:: Creating key for {}.".format(username))
 
-        # TODO: replicate source vars
         return utils.getProcessOutput(
             "./build-key",
-            args=["--batch", username],
-            env=self.env,
+            args=[username],
+            env=os.environ,
             path=self.path['openvpn-ca']
         ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
 
@@ -123,12 +101,12 @@ class Accounts(Base):
         return utils.getProcessOutput(
             'tcpdump',
             args=[
-                "-i tun0", "host {}".format(ip_addr),
-                "-w pcaps/{}.pcap".format(username)
+                "-i", "tun0", "host", "{}".format(ip_addr),
+                "-w", "pcaps/{}.pcap".format(username)
             ],
             env=os.environ,
             path=self.path['client-configs']
-        ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+        ).addCallback(self.cb_cmd).addErrback(lambda e: None)
 
     def _stop_traffic_capture(self):
         """ """
@@ -141,7 +119,7 @@ class Accounts(Base):
         return utils.getProcessOutput(
             './revoke-full',
             args=[username],
-            env=self.env,
+            env=os.environ,
             path=self.path['openvpn-ca']
         ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
 
@@ -160,10 +138,10 @@ class Accounts(Base):
         """ """
         start_date_str = datetime.now().strftime("%Y-%m-%d")
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-        exp_date = start_date + timedelta(days=3)
+        exp_date = start_date + timedelta(days=self.expiration_days)
         exp_date_str = exp_date.strftime("%Y-%m-%d")
 
-        query = "update requests set start date=?, \
+        query = "update requests set start_date=?, \
         expiration_date=? where email_addr=?"
 
         log.debug(
@@ -195,6 +173,8 @@ class Accounts(Base):
                         )
                     )
                     yield self._update_status(email_addr, "IN_PROCESS")
+                    # key -> EXEC_ERROR
+                    yield self._create_key(username)
                     # assign ip -> NO_IP_AVAILABLE
                     ip = yield self._generate_ip()
                     # create profile (ip, user) -> EXEC_ERROR
@@ -204,7 +184,7 @@ class Accounts(Base):
                     # calculate exp date
                     yield self._set_expiration_date(email_addr)
                     # set to ACTIVE_READY - profile ready to be sent
-                    yield self._update_status(email_addr, "ACTIVE_READY")
+                    yield self._update_status(email_addr, "PROFILE_PENDING")
                     log.info(
                         "ACCOUNTS:: Account ready for {} with IP {}. Profile\
                          .ovpn on queue to be sent to {}.".format(
