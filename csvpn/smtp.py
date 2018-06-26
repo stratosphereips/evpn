@@ -12,6 +12,7 @@
 
 from ConfigParser import ConfigParser
 
+from email import Encoders
 from email.MIMEBase import MIMEBase
 from email.mime.text import MIMEText
 from email.MIMEMultipart import MIMEMultipart
