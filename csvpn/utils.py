@@ -93,6 +93,7 @@ class Base(object):
     def eb_cmd(self, error):
         """ Errback for command execution. """
         log.debug("CMD:: Command execution failed.")
+        log.debug("{}".format(error))
         raise ExecError("{}".format(error))
 
     def get_new(self):
