@@ -39,6 +39,10 @@ class Accounts(Base):
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
         self.path['pcaps'] = config.get('path', 'pcaps')
 
+        tcpdump_args = config.get('tcpdump', 'args')
+        self.tcpdump_args = tcpdump_args.split(',')
+        self.tcpdump_interface = config.get('tcpdump', 'interface')
+
         self.expiration_days = int(config.get('general', 'expiration_days'))
         self.interval = float(config.get('general', 'interval'))
 
@@ -101,26 +105,25 @@ class Accounts(Base):
             )
         )
 
-        """
-        return utils.getProcessOutput(
-            'tcpdump',
-            args=[
-                "-i", "tun0", "host", "{}".format(ip_addr),
-                "-w", "pcaps/{}.pcap".format(username)
-            ],
-            env=os.environ,
-            path=self.path['client-configs']
-        ).addCallback(self.cb_cmd).addErrback(lambda e: None)
-        """
         now_str = datetime.now().strftime("%Y-%m-%d")
         pcap_file = "{}_{}_{}.pcap".format(username, ip_addr, now_str)
         pcap_file = os.path.join(self.path['pcaps'], pcap_file)
+
+        cap_args = self.tcpdump_args
+        cap_args.append("-i")
+        cap_args.append(self.tcpdump_interface)
+        cap_args.append("-w")
+        cap_args.append(pcap_file)
+
+        print "args: "
+        from pprint import pprint
+        pprint(cap_args)
 
         pp = protocol.ProcessProtocol()
         from twisted.internet import reactor
         p = reactor.spawnProcess(
                 pp, "/usr/sbin/tcpdump", 
-                args=["-n", "-s0", "-i", "wlp2s0", "-v", "-w", pcap_file, "-l"],
+                args=cap_args,
             )
 
         k = "{}-{}".format(username, ip_addr)
