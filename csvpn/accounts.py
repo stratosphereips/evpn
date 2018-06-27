@@ -14,7 +14,7 @@ import os
 from datetime import datetime, timedelta
 from ConfigParser import ConfigParser
 
-from twisted.internet import defer, utils
+from twisted.internet import defer, protocol, utils
 
 # local imports
 from utils import log, Base, IPError, ExecError
@@ -37,9 +37,12 @@ class Accounts(Base):
         self.path = {}
         self.path['client-configs'] = config.get('path', 'client-configs')
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
+        self.path['pcaps'] = config.get('path', 'pcaps')
 
         self.expiration_days = int(config.get('general', 'expiration_days'))
         self.interval = float(config.get('general', 'interval'))
+
+        self.capture_processes = {}
 
         Base.__init__(self)
 
@@ -98,6 +101,7 @@ class Accounts(Base):
             )
         )
 
+        """
         return utils.getProcessOutput(
             'tcpdump',
             args=[
@@ -107,10 +111,28 @@ class Accounts(Base):
             env=os.environ,
             path=self.path['client-configs']
         ).addCallback(self.cb_cmd).addErrback(lambda e: None)
+        """
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        pcap_file = "{}_{}_{}.pcap".format(username, ip_addr, now_str)
+        pcap_file = os.path.join(self.path['pcaps'], pcap_file)
 
-    def _stop_traffic_capture(self):
+        pp = protocol.ProcessProtocol()
+        from twisted.internet import reactor
+        p = reactor.spawnProcess(
+                pp, "/usr/sbin/tcpdump", 
+                args=["-n", "-s0", "-i", "wlp2s0", "-v", "-w", pcap_file, "-l"],
+            )
+
+        k = "{}-{}".format(username, ip_addr)
+        self.capture_processes[k] = (pp, p.pid)
+
+    def _stop_traffic_capture(self, username, ip_addr):
         """ """
-        pass
+        log.info("ACCOUNTS:: Stopping traffic capture")
+        k = "{}-{}".format(username, ip_addr)
+        p = self.capture_processes[k]
+        log.debug("ACCOUNTS:: Killing process with PID {}".format(str(p[1])))
+        p[0].transport.signalProcess("KILL")
 
     def _revoke_user(self, username):
         """ Revoke OpenVPN user. """
@@ -134,25 +156,24 @@ class Accounts(Base):
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
-    def _set_expiration_date(self, email_addr):
+    def _set_ip_expiration_date(self, email_addr, ip_addr):
         """ """
         start_date_str = datetime.now().strftime("%Y-%m-%d")
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
         exp_date = start_date + timedelta(days=self.expiration_days)
         exp_date_str = exp_date.strftime("%Y-%m-%d")
 
-        query = "update requests set start_date=?, \
+        query = "update requests set ip_addr=?, start_date=?, \
         expiration_date=? where email_addr=?"
 
         log.debug(
-            "ACCOUNTS:: Setting start and expiration date to {}-{}.".format(
-                start_date_str, exp_date_str
-            )
+            "ACCOUNTS:: Setting IP, start and expiration date to {}, {}, {}.\
+            ".format(ip_addr, start_date_str, exp_date_str)
         )
 
         return self.dbpool.runQuery(
             query,
-            (start_date_str, exp_date_str, email_addr)
+            (ip_addr, start_date_str, exp_date_str, email_addr)
         ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
 
     @defer.inlineCallbacks
@@ -182,12 +203,12 @@ class Accounts(Base):
                     # run tcpdump -> CAP_ERROR
                     yield self._start_traffic_capture(username, ip)
                     # calculate exp date
-                    yield self._set_expiration_date(email_addr)
+                    yield self._set_ip_expiration_date(email_addr, ip)
                     # set to ACTIVE_READY - profile ready to be sent
                     yield self._update_status(email_addr, "PROFILE_PENDING")
                     log.info(
-                        "ACCOUNTS:: Account ready for {} with IP {}. Profile\
-                         .ovpn on queue to be sent to {}.".format(
+                        "ACCOUNTS:: Account ready for {} with IP {}. Profile"
+                        ".ovpn on queue to be sent to {}.".format(
                             username, ip, email_addr
                         )
                     )
@@ -212,10 +233,10 @@ class Accounts(Base):
         if expired:
             log.info("ACCOUNTS:: Got expired accounts.")
             for request in expired:
-                email_addr = request[0]
+                email_addr, ip = request[0], request[5]
                 username, domain = email_addr.split('@')
                 # stop traffic capture
-                # yield self._stop_traffic_capture()
+                yield self._stop_traffic_capture(username, ip)
                 yield self._revoke_user(username)
                 # update status
                 yield self._update_status(email_addr, "EXPIRED")
