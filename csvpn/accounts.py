@@ -11,10 +11,13 @@
 
 import os
 
+from ipaddress import ip_network
 from datetime import datetime, timedelta
 from ConfigParser import ConfigParser
 
+from twisted.python.filepath import FilePath
 from twisted.internet import defer, protocol, utils
+from twisted.internet.fdesc import writeToFD, setNonBlocking
 
 # local imports
 from utils import log, Base, IPError, ExecError
@@ -35,6 +38,7 @@ class Accounts(Base):
 
         log.debug("ACCOUNTS:: Loading configuration values.")
         self.path = {}
+        self.path['client-configs-ips'] = config.get('path', 'client-configs-ips')
         self.path['client-configs'] = config.get('path', 'client-configs')
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
         self.path['pcaps'] = config.get('path', 'pcaps')
@@ -46,32 +50,35 @@ class Accounts(Base):
         self.expiration_days = int(config.get('general', 'expiration_days'))
         self.interval = float(config.get('general', 'interval'))
 
+        self.netrange = config.get('network', 'range')
+        self.netmask = config.get('network', 'mask')
+        subnet_str = "{}/{}".format(self.netrange, self.netmask)
+        self.subnet = ip_network(unicode(subnet_str))
+        server_ip = config.get('network', 'server_ip')
+        self.allocated_ips = []
+        self.allocated_ips.append(server_ip)
+
         self.capture_processes = {}
 
         Base.__init__(self)
 
-    @defer.inlineCallbacks
     def _generate_ip(self):
         """ """
-        query = "select * from requests where ip_addr=? and status=?"
-        ip_addr = "10.0.0."
-        n = 0
+        found = False
+        for ip_addr in self.subnet.hosts():
+            ip_addr_str = str(ip_addr)
+            log.debug("ACCOUNTS:: Checking if {} is free.".format(ip_addr_str))
 
-        for x in range(1, 255):
-            log.debug("ACCOUNTS:: Checking if 10.0.0.{} is taken.".format(x))
-            curr_ip = "10.0.0.{}".format(x)
-            response = yield self.dbpool.runQuery(query, (curr_ip, "ACTIVE")).\
-                addCallback(self.cb_db_query).addErrback(self.eb_db_query)
-            if not response:
-                n = x
-                ip_addr = ip_addr + str(x)
-                log.debug("ACCOUNTS:: Found {} available".format(ip_addr))
+            if ip_addr_str not in self.allocated_ips:
+                log.debug("ACCOUNTS:: Found {} available".format(ip_addr_str))
+                self.allocated_ips.append(ip_addr_str)
+                found = True
                 break
 
-        if n > 0:
-            defer.returnValue(ip_addr)
+        if found:
+            return ip_addr_str
         else:
-            log.debug("ACCOUNTS:: Could not find available IP!")
+            log.debug("ACCOUNTS:: Could not find a free IP address!")
             raise IPError("IP error")
 
     def _create_key(self, username):
@@ -96,6 +103,20 @@ class Accounts(Base):
             env=os.environ,
             path=self.path['client-configs']
         ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _create_ipfile(self, username, ip_addr):
+        """ """
+        log.info("ACCOUNTS:: Creating IP file for client.")
+
+        ip_filename = os.path.join(self.path['client-configs-ips'], username)
+        log.debug("ACCOUNTS: Writing {} with {}.".format(ip_filename, ip_addr))
+
+        data = "ifconfig-push {} {}\n".format(ip_addr, self.netmask)
+
+        with open(ip_filename, 'w+') as f:
+            fd = f.fileno()
+            setNonBlocking(fd)
+            writeToFD(fd, data)
 
     def _start_traffic_capture(self, username, ip_addr):
         """ Start capturing traffic. """
@@ -147,6 +168,18 @@ class Accounts(Base):
             env=os.environ,
             path=self.path['openvpn-ca']
         ).addCallback(self.cb_cmd).addErrback(self.eb_cmd)
+
+    def _delete_ipfile(self, username):
+        """ """
+        log.info("ACCOUNTS:: Deleting IP file for {}.".format(username))
+
+        filename = os.path.join(self.path['client-configs-ips'], username)
+        log.debug("ACCOUNTS:: Moving file to {}.revoked.".format(filename))
+
+        fp = FilePath(filename)
+        revoked_fp = FilePath("{}.revoked".format(filename))
+        fp.moveTo(revoked_fp)
+
 
     def _get_expired_requests(self):
         """ Get requests with . """
@@ -203,6 +236,8 @@ class Accounts(Base):
                     ip = yield self._generate_ip()
                     # create profile (ip, user) -> EXEC_ERROR
                     yield self._create_profile(username, ip)
+                    # create file for static ip
+                    yield self._create_ipfile(username, ip)
                     # run tcpdump -> CAP_ERROR
                     yield self._start_traffic_capture(username, ip)
                     # calculate exp date
@@ -241,6 +276,7 @@ class Accounts(Base):
                 # stop traffic capture
                 yield self._stop_traffic_capture(username, ip)
                 yield self._revoke_user(username)
+                yield self._delete_ipfile(username)
                 # update status
                 yield self._update_status(email_addr, "EXPIRED")
                 log.info(
