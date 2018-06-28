@@ -23,12 +23,6 @@ from twisted.internet.fdesc import writeToFD, setNonBlocking
 from utils import log, Base, IPError, ExecError
 
 
-
-class AccountError(Exception):
-    """ """
-    pass
-
-
 class Accounts(Base):
     """ Accounts. """
     def __init__(self, config_file):
