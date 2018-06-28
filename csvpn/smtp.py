@@ -42,12 +42,23 @@ class Messages(Base):
         self.password = config.get('credentials', 'password')
 
         self.interval = float(config.get('general', 'interval'))
+        # civilsphere team email(s) for getting notifications
+        self.cs_emails = config.get('general', 'cs_emails')
 
         self.msg = {}
+        # subjects
         self.msg['profile_subject'] = config.get('subject', 'profile')
+        self.msg['expired_subject'] = config.get('subject', 'expired')
         self.msg['help_subject'] = config.get('subject', 'help')
+        self.msg['profile_cc_subject'] = config.get('subject', 'profile_cc')
+        self.msg['expired_cc_subject'] = config.get('subject', 'expired_cc')
+        # body
         self.msg['profile_body'] = config.get('body', 'profile')
+        self.msg['expired_body'] = config.get('body', 'expired')
         self.msg['help_body'] = config.get('body', 'help')
+        self.msg['profile_cc_body'] = config.get('body', 'profile_cc')
+        self.msg['expired_cc_body'] = config.get('body', 'expired_cc')
+
 
         self.path = {}
         self.path['profiles'] = config.get('path', 'profiles')
@@ -96,6 +107,10 @@ class Messages(Base):
             )
             message.attach(attachment)
 
+        if "," in email_addr:
+            log.debug("SMTP:: Sending email to multiple recipients.")
+            email_addr = email_addr.split(",")
+
         log.debug("SMTP:: Calling asynchronous sendmail.")
         return sendmail(
             self.host, self.username, email_addr, message,
@@ -108,15 +123,15 @@ class Messages(Base):
         """"""
         pending_help = yield self._get_requests("HELP_PENDING")
         pending_profiles = yield self._get_requests('PROFILE_PENDING')
+        expired_accounts = yield self._get_requests('EXPIRED_PENDING')
 
         try:
             if pending_help:
                 log.info("SMTP:: Got pending messages for help.")
                 for request in pending_help:
                     email_addr = request[0]
-                    username, domain = email_addr.split('@')
                     log.info("SMTP:: Sending help message to {}.".format(
-                        email_addr
+                            email_addr
                         )
                     )
                     yield self.sendmail(
@@ -142,7 +157,30 @@ class Messages(Base):
                         email_addr, "mime", self.msg['profile_subject'],
                         self.msg['profile_body'], ovpn_file
                     )
+                    # notify cs team
+                    yield self.sendmail(
+                        self.cs_emails, "plain", self.msg['profile_cc_subject'],
+                        self.msg['profile_cc_body']
+                    )
                     yield self._update_status(email_addr, "ACTIVE")
+            elif expired_accounts:
+                log.info("SMTP:: Got pending messages for expired accounts.")
+                for request in expired_accounts:
+                    email_addr = request[0]
+                    log.info("SMTP:: Sending expiration message to {}.".format(
+                            email_addr
+                        )
+                    )
+                    yield self.sendmail(
+                        email_addr, "plain", self.msg['expired_subject'],
+                        self.msg['expired_body']
+                    )
+                    # notify cs team
+                    yield self.sendmail(
+                        self.cs_emails, "plain", self.msg['expired_cc_subject'],
+                        self.msg['expired_cc_body']
+                    )
+                    yield self._update_status(email_addr, "EXPIRED")
             else:
                 log.debug("SMTP:: No pending messages - Keep waiting.")
 
