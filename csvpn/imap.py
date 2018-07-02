@@ -23,21 +23,18 @@ from twisted.protocols import basic
 from twisted.enterprise import adbapi
 from twisted.internet import ssl, defer, stdio, protocol, endpoints
 
-from pprint import pprint
-
 # local imports
-from utils import Base, log
+from utils import log, Base, AddressError, DkimError
 
-
-class AddressError(Exception):
-    pass
-
-
-class DkimError(Exception):
-    pass
+"""
+Most of this classes and methods were adapted from Twisted examples.
+See https://twisted.readthedocs.io/en/twisted-18.4.0/mail/examples/index.html
+for reference. Some comments are my own, some from the example.
+"""
 
 
 class TrivialPrompter(basic.LineReceiver):
+    """ Prompter to interact with IMAP4 server. """
     from os import linesep as delimiter
     delimiter = delimiter.encode('utf-8')
 
@@ -60,9 +57,7 @@ class TrivialPrompter(basic.LineReceiver):
 
 
 class SimpleIMAP4Client(imap4.IMAP4Client):
-    """
-    A client with callbacks for greeting messages from an IMAP server.
-    """
+    """ Simple client for greeting the server."""
     greetDeferred = None
 
     def serverGreeting(self, caps):
@@ -73,6 +68,7 @@ class SimpleIMAP4Client(imap4.IMAP4Client):
 
 
 class SimpleIMAP4ClientFactory(protocol.ClientFactory):
+    """ Simple client factory extended for IMAP4. """
     usedUp = False
     protocol = SimpleIMAP4Client
 
@@ -84,7 +80,7 @@ class SimpleIMAP4ClientFactory(protocol.ClientFactory):
         """
         Initiate the protocol instance. Since we are building a simple IMAP
         client, we don't bother checking what capabilities the server has. We
-        just add all the authenticators twisted.mail has.  Note: Gmail no
+        just add all the authenticators twisted.mail has. Note: Gmail no
         longer uses any of the methods below, it's been using XOAUTH since
         2010.
         """
@@ -108,19 +104,33 @@ class SimpleIMAP4ClientFactory(protocol.ClientFactory):
 
 
 class Fetchmail(Base):
-    """ """
+    """
+    Class for fetching mails from IMAP4 servers. Used for:
+
+        - Establish communication with IMAP4 server following the ritual:
+          greet, auth, select mailbox, search, fetch mails.
+        - Process fetched mails: get headers, body, parse contents.
+    """
+
     def __init__(self, config_file):
-        """ """
+        """
+        Constructor. It loads configuration values and call the
+        Base constructor.
+
+        :param config_file (str): path for configuration file.
+        """
         config = ConfigParser()
         config.read(config_file)
 
         log.debug("IMAP:: Loading configuration values.")
+        # Credentials and host information
         self.host = config.get('credentials', 'host')
         self.port = int(config.get('credentials', 'port'))
+        # For our case, we should use Gmail names for mailboxes
         self.mbox = config.get('credentials', 'mbox')
         self.username = config.get('credentials', 'username')
         self.password = config.get('credentials', 'password')
-
+        # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
 
         Base.__init__(self)
@@ -128,11 +138,16 @@ class Fetchmail(Base):
     def cb_server_greeting(self, proto):
         """
         Initial callback - invoked after the server sends us its greet message.
+
+        :param proto (SimpleIMAP4Client): protocol instance.
+
+        :return: deferred whose callback/errback will handle protocol
+        authentication result.
         """
-        # Hook up stdio
         log.debug(
             "IMAP:: Got greeting message from server. Creating prompter."
         )
+        # Hook up stdio
         tp = TrivialPrompter()
         stdio.StandardIO(tp)
 
@@ -147,22 +162,32 @@ class Fetchmail(Base):
         ).addCallback(self.cb_auth).addErrback(self.eb_auth)
 
     def eb_server_greeting(error):
-        """ """
+        """
+        Errback if we don't/can't receive server's greet message.
+        """
         log.debug(
             "IMAP:: Could not get greeting message from server: {}.".format(
                 error
             )
         )
 
-    def cb_auth(self, result):
+    def cb_auth(self, capabilities):
         """
-        Callback after authentication has succeeded.
+        Callback after auth has succeeded. Select the `self.mbox` mailbox.
 
-        Lists a bunch of mailboxes.
+        :param capabilities (dict): a list of server capabilities and result
+        of authentication.
+
+        :return: deferred whose callback/errback will handle mailbox
+        selection.
         """
-        log.debug("IMAP:: Authentication successful. Selecting mailbox.")
-        return self.proto.list(
-            "", "*"
+        log.debug(
+            "IMAP:: Auth successful. Selecting mailbox {}.".format(
+                self.mbox
+            )
+        )
+        return self.proto.select(
+            self.mbox
         ).addCallback(self.cb_mbox_select).addErrback(self.eb_mbox_select)
 
     def eb_auth(self, failure):
@@ -171,119 +196,120 @@ class Fetchmail(Base):
 
         If it failed because no SASL mechanisms match, offer the user the
         choice of logging in insecurely.
-
-        If you are trying to connect to your Gmail account, you will be here!
         """
         log.debug("IMAP:: Authentication failed.")
         failure.trap(imap4.NoSupportedAuthentication)
-        # change this to exception
+        # TODO: change this to exception
         return defer.fail(Exception("Login failed for security reasons."))
 
-    def cb_mbox_select(self, result):
+    def cb_mbox_select(self, mbox_info):
         """
-        Callback invoked when a list of mailboxes has been retrieved.
+        Callback invoked when select command completes. Search for unseen
+        messages.
+
+        :param mbox_info (dict): Mailbox information. See
+        twisted.mail.imap4.IMAP4Client.html#select for details.
+
+        :return: deferred whose callback will be invoked with a list of all
+        the message sequence numbers return by the search, or whose errback
+        will be invoked if there is an error.
         """
-        # result = [e[2] for e in result]
-        # s = '\n'.join(['%d. %s' % (n + 1, m) \
-        # for (n, m) in zip(range(len(result)), result)])
-        # if not s:
-        #    return defer.fail(Exception("No mailboxes exist on server!"))
 
-        # result[N], with number of mailbox - 1
-        # mbox = result[1]
-        log.debug("IMAP:: Selected {}. Examining mailbox.".format(self.mbox))
-        # select allows read and write
-        return self.proto.select(
-            self.mbox
-        ).addCallback(self.cb_mbox_examine).addErrback(self.eb_mbox_examine)
-
-    def eb_mbox_select(self, error):
-        """ """
-        log.debug(
-            "IMAP:: Could not select mailbox {}: {}.".format(
-                self.mailbox, error
-            )
-        )
-
-    def cb_mbox_examine(self, result):
-        """
-        Callback invoked when examine command completes.
-
-        Retrieve the subject header of every message in the mailbox.
-        """
         new = imap4.Query(unseen=True, sorted=True)
         log.debug(
-            "IMAP:: Examining mailbox {}. \
-            Trying to fetch unseen mails.".format(self.mbox)
+            "IMAP:: Examining mailbox {}. "
+            "Trying to fetch unseen messages.".format(self.mbox)
         )
         return self.proto.search(
             new
         ).addCallback(self.cb_fetchmail).addErrback(self.eb_fetchmail)
 
-    def eb_mbox_examine(self, error):
-        """ """
+    def eb_mbox_select(self, error):
+        """
+        Errback if we don't/can't select mailbox.
+        """
         log.debug(
-            "IMAP:: Could not examine mailbox {}: {}.".format(
+            "IMAP:: Could not select mailbox {}: {}.".format(
                 self.mbox, error
             )
         )
 
     @defer.inlineCallbacks
-    def cb_fetchmail(self, result):
+    def cb_fetchmail(self, mids):
         """
-        Finally, display headers.
+        Finally, retrieve messages. Get headers, body, and parse it. After
+        that just finish communication with the IMAP server.
+
+        :param mids (list): list of mail IDs for unseen messages.
         """
-        for mid in result:
-            headers = yield self.get_email_headers(mid)
-            body = yield self.get_email_body(mid)
+        for mid in mids:
+            log.info("IMAP:: Fetching message with MID {}".format(mid))
+            log.debug("IMAP:: Fetching headers")
+            headers = yield self.proto.fetchHeaders(mid)
+            log.debug("IMAP:: Fetching body")
+            body = yield self.proto.fetchBody(mid)
             if headers and body:
                 log.info("IMAP:: Got new mail!")
                 try:
+                    # We don't do asynchronous parse of message content
                     yield defer.maybeDeferred(
-                        self.parse_email, mid, headers, body
+                        self.parse_message, mid, headers, body
                     ).addCallback(
-                        self.cb_parse_email
+                        self.cb_parse_message
                     ).addErrback(
-                        self.eb_parse_email
+                        self.eb_parse_message
                     )
-
+                # Fail if the email address is malformed, does not have valid
+                # DKIM signature
                 except AddressError as e:
                     log.info("IMAP:: Invalid email address: {}.".format(e))
                 except DkimError as e:
                     log.info("IMAP:: DKIM error: {}.".format(e))
-                except ExistingAccount as e:
-                    log.info("IMAP:: Duplicated request: {}.".format(e))
 
                 log.info("IMAP:: Mail processed.")
 
+        # Finish communication. Connect and disconnect rather than keep a
+        # persistent connection
         yield self.proto.logout()
 
     def eb_fetchmail(self, error):
-        """ """
-        log.debug("IMAP:: Could not fetch mail: {}.".format(error))
+        """
+        Errback if we don't/can't fetch the mails (search query failed).
+        """
+        log.debug("IMAP:: Could not fetch message: {}.".format(error))
 
-    def get_email_headers(self, num):
-        """ """
-        log.debug(
-            "IMAP:: Fetching headers for mail with MID {}".format(num)
-        )
-        return self.proto.fetchHeaders(num)
+    def parse_message(self, mid, headers, body):
+        """
+        Parse message content. Check if email address is well formed and if
+        DKIM signature is valid. Finally, look for commands to process the
+        request. Current commands are:
 
-    def get_email_body(self, num):
-        """ """
-        log.debug("IMAP:: Fetching body for mail with MID {}".format(num))
-        return self.proto.fetchBody(num)
+            - vpn account: request a new VPN account.
+            - anything else is processed as a help request.
 
-    def parse_email(self, num, headers, body):
-        """ """
+        :param mid (int): mail identifier.
+        :param headers (dict): message headers.
+        :param body (dict): message body.
+
+        :return dict with email address and command (`account` or `help`).
+        """
         log.info("IMAP:: Parsing email content.")
 
-        headers_str = headers[num]['RFC822.HEADER']
-        body_str = body[num]['RFC822.TEXT']
-        msg = message_from_string(headers_str + body_str)
+        headers_str = headers[mid]['RFC822.HEADER']
+        body_str = body[mid]['RFC822.TEXT']
+        # Create an email.message.Message object
+        msg_str = headers_str + body_str
+        msg = message_from_string(msg_str)
 
+        # Normalization will convert <Alice Wonderland> alice@wonderland.net
+        # to alice@wonderland.net
         name, norm_addr = parseaddr(msg['From'])
         log.debug("IMAP:: Normalizing and validating {}.".format(msg['From']))
+
+        # Validate_email will do a bunch of regexp to see if the email address
+        # is well address. Additional options for validate_email are check_mx
+        # and verify, which check if the SMTP host and email address exist.
+        # See validate_email package for more info.
         if norm_addr and validate_email.validate_email(norm_addr):
             log.debug("IMAP:: Normalized email address: {}.".format(norm_addr))
             log.info("IMAP:: Email address looks good: {}.".format(norm_addr))
@@ -291,80 +317,96 @@ class Fetchmail(Base):
             log.debug("IMAP:: Error normalizing/validating email address.")
             raise AddressError("Invalid email address {}".format(from_header))
 
+        # DKIM verification. Simply check that the server has verified the
+        # message's signature
         log.info("IMAP:: Checking DKIM signature.")
-        if dkim.verify(msg.as_string()):
+        # Note: msg.as_string() changes the message to conver it to string, so
+        # DKIM will fail. Use the original string istead
+        if dkim.verify(msg_str):
             log.info("IMAP:: Valid DKIM signature.")
-            command = "help"
-
-            body_content = self.get_body_content(msg)
-            words = re.split("\s+", body_content.strip())
-
-            prev_word = ""
-            for word in words:
-                if prev_word == "vpn" and word.lower() == "account":
-                    command = "account"
-                    break
-                else:
-                    prev_word = word.lower()
-
-            log.debug("IMAP:: Email body content parsed.")
-            if command == 'account':
-                log.info("IMAP:: Got request for new account.")
-            elif command == "help":
-                log.info("IMAP:: Got request for help.")
         else:
             log.info("IMAP:: Invalid DKIM headers.")
-            # log.debug(headers_str)
             raise DkimError("DKIM verification failed")
+
+        # For parsing we just search for `vpn account` keywords.
+        command = "help"
+        words = re.split(r"\s+", body_str.strip())
+        prev_word = ""
+        for word in words:
+            if prev_word == "vpn" and word.lower() == "account":
+                command = "account"
+                break
+            else:
+                prev_word = word.lower()
+
+        log.debug("IMAP:: Email body content parsed.")
+        if command == 'account':
+            log.info("IMAP:: Got request for new account.")
+        elif command == "help":
+            log.info("IMAP:: Got request for help.")
 
         return {'email_addr': norm_addr, 'command': command}
 
-    def get_body_content(self, msg):
-        """ """
-        maintype = msg.get_content_maintype()
+    def cb_parse_message(self, request):
+        """
+        Callback invoked when the message has been parsed. It stores the
+        obtained information in the database for further processing by the
+        Accounts or Messages services.
 
-        if maintype == 'multipart':
-            log.debug("IMAP:: Received a multipart message.")
-            for part in msg.get_payload():
-                if part.get_content_maintype() == 'text':
-                    return part.get_payload()
+        :param (dict) request: the built request based on message's content.
+        It contains the `email_addr` and command `fields`.
 
-        elif maintype == 'text':
-            log.debug("IMAP:: Received a plain text message.")
-            return msg.get_payload()
-
-    def cb_parse_email(self, request):
-        """ """
+        :return: deferred whose callback/errback will log database query
+        execution details.
+        """
         log.info("IMAP:: Request parsed successfully: {} ({}).".format(
             request['email_addr'], request['command'])
         )
 
         query = "insert into requests values(?, ?, '', '', ?, '')"
 
+        # Account requests are set to ONHOLD to be processed by the Accounts
+        # serice. Help requests are set to HELP_PENDING to be processed by the
+        # Messages service.
         if request['command'] == "account":
-        	log.debug("IMAP:: Inserting new request with status ONHOLD.")
-        	return self.dbpool.runQuery(
-        		query, (request['email_addr'], request['command'], "ONHOLD")
-        	).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
+            log.debug("IMAP:: Inserting new request with status ONHOLD.")
+            return self.dbpool.runQuery(
+                query, (
+                    request['email_addr'],
+                    request['command'],
+                    "ONHOLD"
+                )
+            ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
         else:
-        	log.debug("IMAP:: Inserting new request with status HELP_PENDING.")
-        	return self.dbpool.runQuery(
-        		query, (request['email_addr'], request['command'], "HELP_PENDING")
-        	).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
-        	
+            log.debug("IMAP:: Inserting new request with status HELP_PENDING.")
+            return self.dbpool.runQuery(
+                query, (
+                    request['email_addr'],
+                    request['command'],
+                    "HELP_PENDING"
+                )
+            ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
 
-    def eb_parse_email(self, error):
-        """ """
+    def eb_parse_message(self, error):
+        """
+        Errback if we don't/can't parse the message's content.
+        """
         log.info("IMAP:: Error parsing email content: {}.".format(error))
 
     def _get_new(self):
-        """  """
+        """
+        Get new mails from IMAP server. This will define the `main loop` of
+        the IMAP service.
+        """
         onConn = defer.Deferred().addCallback(
             self.cb_server_greeting
         ).addErrback(
             self.eb_server_greeting
         )
 
+        # Connect with endpoints. Connect and disconnect from time to time
+        # (defined by the service's interval) instead of establishing a
+        # persistent connection
         factory = SimpleIMAP4ClientFactory(self.username, onConn)
 
         from twisted.internet import reactor

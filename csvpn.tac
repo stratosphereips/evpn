@@ -28,22 +28,22 @@ messages = Messages('smtp.cfg')
 
 log.info("Starting services.")
 
-# service for fetching new emails from VPN mail account
+# Service for fetching new emails from VPN mail account
 fetchmail_service = BaseService(
     "fetchmail", fetchmail.get_interval(), fetchmail
 )
 
-# service for creating and revoking VPN accounts
+# Service for creating and revoking VPN accounts
 accounts_service = BaseService(
     "accounts", accounts.get_interval(), accounts
 )
 
-# service for sending emails
+# Service for sending emails
 messages_service = BaseService(
     "messages", messages.get_interval(), messages
 )
 
-
+# The heart of the csvpn manager
 csvpn = service.MultiService()
 csvpn.addService(fetchmail_service)
 csvpn.addService(accounts_service)

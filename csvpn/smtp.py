@@ -20,67 +20,73 @@ from twisted.internet import defer
 from twisted.mail.smtp import sendmail
 
 # local imports
-from utils import Base, log
-
-
-class SMTPError(Exception):
-    """ """
-    pass
+from utils import log, Base, SMTPError
 
 
 class Messages(Base):
-    """ """
+    """
+    Messages class. Used for:
+
+        - Send mails based on requests status in database.
+    """
     def __init__(self, config_file):
-        """ """
+        """
+        Constructor. It loads configuration values and call the
+        Base constructor.
+
+        :param config_file (str): path for configuration file.
+        """
         config = ConfigParser()
         config.read(config_file)
 
+        # Credentials and host information
         log.debug("SMTP:: Loading configuration values.")
         self.host = config.get('credentials', 'host')
         self.port = int(config.get('credentials', 'port'))
         self.username = config.get('credentials', 'username')
         self.password = config.get('credentials', 'password')
-
+        # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
-        # civilsphere team email(s) for getting notifications
+        # CivilSphere team email address(es) for getting notifications
         self.cs_emails = config.get('general', 'cs_emails')
 
+        # Different message's subject and body fields to be sent.
         self.msg = {}
-        # subjects
         self.msg['profile_subject'] = config.get('subject', 'profile')
         self.msg['expired_subject'] = config.get('subject', 'expired')
         self.msg['help_subject'] = config.get('subject', 'help')
         self.msg['profile_cc_subject'] = config.get('subject', 'profile_cc')
         self.msg['expired_cc_subject'] = config.get('subject', 'expired_cc')
-        # body
         self.msg['profile_body'] = config.get('body', 'profile')
         self.msg['expired_body'] = config.get('body', 'expired')
         self.msg['help_body'] = config.get('body', 'help')
         self.msg['profile_cc_body'] = config.get('body', 'profile_cc')
         self.msg['expired_cc_body'] = config.get('body', 'expired_cc')
 
-
+        # Useful paths
         self.path = {}
         self.path['profiles'] = config.get('path', 'profiles')
 
         Base.__init__(self)
 
-    def cb_smtp(self, message):
-        """ """
-        log.info("SMTP:: Email sent successfully.")
-        log.debug("SMTP:: {}".format(message))
-
-    def eb_smtp(self, error):
-        """ """
-        log.debug("SMTP:: Could not send mail.")
-        raise SMTPError("{}".format(error))
-
     def sendmail(self, email_addr, type, subject, content, file=None):
-        """ Send email.
+        """
+        Send an email message. It creates a plain text or mime message
+        depending on the request's type, set headers and content and
+        finally send it.
 
-        :param email_addr (string): email address to send help.
+        :param email_addr (str): email address of the recipient.
+        :param type (str): type of message to create (plain or mime).
+        :param subject (str): subject of the message.
+        :param content (str): content of the message.
+        :param file (str): path to file to be attached (optional).
+
+        :return: deferred whose callback/errback will handle the SMTP
+        execution details.
         """
 
+        # Help requests are just text. Accounts requests attach a .ovpn
+        # file, so they are MIME
         if type == "plain":
             log.debug("SMTP:: Creating plain text email")
             message = MIMEText(content)
@@ -107,6 +113,8 @@ class Messages(Base):
             )
             message.attach(attachment)
 
+        # Create a list of email address so twisted.mail.smtp.sendmail
+        # knows how to handle it
         if "," in email_addr:
             log.debug("SMTP:: Sending email to multiple recipients.")
             email_addr = email_addr.split(",")
@@ -118,9 +126,30 @@ class Messages(Base):
             requireAuthentication=True, requireTransportSecurity=True
         ).addCallback(self.cb_smtp).addErrback(self.eb_smtp)
 
+    def cb_smtp(self, message):
+        """
+        Callback invoked after mail has been sent.
+
+        :param message (string): Success details from the server.
+        """
+        log.info("SMTP:: Email sent successfully.")
+        log.debug("SMTP:: {}".format(message))
+
+    def eb_smtp(self, error):
+        """
+        Errback if we don't/can't send the built message.
+        """
+        log.debug("SMTP:: Could not send mail.")
+        raise SMTPError("{}".format(error))
+
     @defer.inlineCallbacks
     def _get_new(self):
-        """"""
+        """
+        Get new requests to process. This will define the `main loop` of
+        the Messages service.
+        """
+
+        # Manage help, profile and expired messages separately
         pending_help = yield self._get_requests("HELP_PENDING")
         pending_profiles = yield self._get_requests('PROFILE_PENDING')
         expired_accounts = yield self._get_requests('EXPIRED_PENDING')
@@ -147,7 +176,7 @@ class Messages(Base):
                     username, domain = email_addr.split('@')
 
                     ovpn_file = "{}{}.ovpn".format(
-                    self.path['profiles'], username
+                        self.path['profiles'], username
                     )
                     log.info("SMTP:: Sending VPN profile to {}.".format(
                         email_addr
@@ -157,9 +186,11 @@ class Messages(Base):
                         email_addr, "mime", self.msg['profile_subject'],
                         self.msg['profile_body'], ovpn_file
                     )
-                    # notify cs team
+                    # Notify CivilSphere team
                     yield self.sendmail(
-                        self.cs_emails, "plain", self.msg['profile_cc_subject'],
+                        self.cs_emails,
+                        "plain",
+                        self.msg['profile_cc_subject'],
                         self.msg['profile_cc_body']
                     )
                     yield self._update_status(email_addr, "ACTIVE")
@@ -167,7 +198,8 @@ class Messages(Base):
                 log.info("SMTP:: Got pending messages for expired accounts.")
                 for request in expired_accounts:
                     email_addr = request[0]
-                    log.info("SMTP:: Sending expiration message to {}.".format(
+                    log.info(
+                        "SMTP:: Sending expiration message to {}.".format(
                             email_addr
                         )
                     )
@@ -175,9 +207,11 @@ class Messages(Base):
                         email_addr, "plain", self.msg['expired_subject'],
                         self.msg['expired_body']
                     )
-                    # notify cs team
+                    # Notify CivilSphere team
                     yield self.sendmail(
-                        self.cs_emails, "plain", self.msg['expired_cc_subject'],
+                        self.cs_emails,
+                        "plain",
+                        self.msg['expired_cc_subject'],
                         self.msg['expired_cc_body']
                     )
                     yield self._update_status(email_addr, "EXPIRED")
