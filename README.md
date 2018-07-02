@@ -48,23 +48,23 @@ capture of such accounts. Its configuration parameters are:
 **general**
 
     interval: time interval (in seconds) of the service's main loop.
-    expiration_days**: amount of days an account expires after its creation.
+    expiration_days: amount of days an account expires after its creation.
 
 **path**
 
-    client-configs: path where account configuration files (.ovpn) will be
-    stored.
-    client-ips: path where configuration files for account's static IP address
-    will be stored.
+    client-configs: path where account configuration files (.ovpn) will be stored.
+    client-ips: path where configuration files for account's static IP address will be stored.
     openvpn-ca: path for openvpn-ca scripts.
     pcaps: path where the pcaps for each account will be stored.
 
-  **tcpdump**
+**tcpdump**
+
     bin: path for tcpdump binary.
     args: tcpdump arguments (other than -i, -w, and host).
     interface: interface on which *tcpdump* will be listening (e.g. tun0).
 
-  **network**
+**network**
+
     range: range of IPs used by OpenVPN (e.g. 10.8.0.0).
     mask: network mask used by OpenVPN (e.g. 255.255.255.0).
     server_ip: internal IP address used by OpenVPN server (e.g. 10.8.0.1).
@@ -117,8 +117,7 @@ message. The structure of the database is very simple, and it contains one
 table *requests* with the following columns:
 
     email_addr: Email address of the request.
-    command: Command extracted from the request. It could be `account` or
-    `help`.
+    command: Command extracted from the request. It could be `account` or `help`.
     start_date: The date when the account was created. Format Y-m-d.
     expiration_date: The date when the account will expire.
     status: account's status.
