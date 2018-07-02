@@ -45,61 +45,69 @@ about its usage, and the manager will reply with instructions.
 This service is on charge of create/revoke accounts, and start/stop traffic
 capture of such accounts. Its configuration parameters are:
 
-  *general*
-  **interval**: time interval (in seconds) of the service's main loop.
-  **expiration_days**: amount of days an account expires after its creation.
+**general**
 
-  *path*
-  **client-configs**: path where account configuration files (.ovpn) will be
-  stored.
-  **client-ips**: path where configuration files for account's static IP
-  address will be stored.
-  **openvpn-ca**: path for openvpn-ca scripts.
-  **pcaps**: path where the pcaps for each account will be stored.
+    interval: time interval (in seconds) of the service's main loop.
+    expiration_days**: amount of days an account expires after its creation.
 
-  *tcpdump*
-  **bin**: path for tcpdump binary.
-  **args**: tcpdump arguments (other than -i, -w, and host).
-  **interface**: interface on which *tcpdump* will be listening (e.g. tun0).
+**path**
 
-  *network*
-  **range**: range of IPs used by OpenVPN (e.g. 10.8.0.0).
-  **mask**: network mask used by OpenVPN (e.g. 255.255.255.0).
-  **server_ip**: internal IP address used by OpenVPN server (e.g. 10.8.0.1).
+    client-configs: path where account configuration files (.ovpn) will be
+    stored.
+    client-ips: path where configuration files for account's static IP address
+    will be stored.
+    openvpn-ca: path for openvpn-ca scripts.
+    pcaps: path where the pcaps for each account will be stored.
+
+  **tcpdump**
+    bin: path for tcpdump binary.
+    args: tcpdump arguments (other than -i, -w, and host).
+    interface: interface on which *tcpdump* will be listening (e.g. tun0).
+
+  **network**
+    range: range of IPs used by OpenVPN (e.g. 10.8.0.0).
+    mask: network mask used by OpenVPN (e.g. 255.255.255.0).
+    server_ip: internal IP address used by OpenVPN server (e.g. 10.8.0.1).
 
 ## Fetchmail
 This service is on charge of retrieving new mails from an IMAP server. Its
 configuration parameters are:
 
-  *general*
-  **interval**: time interval (in seconds) of the service's main loop.
-   *credentials*
-  **host**: IMAP host.
-  **port**: IMAP port.
-  **username**: email account username.
-  **password**: email account password.
-  **mbox**: Mailbox from where to fetch new emails (e.g. INBOX).
+**general**
+
+    interval: time interval (in seconds) of the service's main loop.
+
+**credentials**
+
+    host: IMAP host.
+    port: IMAP port.
+    username: email account username.
+    password: email account password.
+    mbox: Mailbox from where to fetch new emails (e.g. INBOX).
 
 ## Messages
 This service is on charge of sending emails to accounts users and the
 CivilSphere team. Its configuration parameters are:
 
-  *general*
-  **interval**: time interval (in seconds) of the service's main loop.
-  **cs_emails**: email addresses of CivilSphere team for receiving
-  notifications.
+**general**
 
-  *credentials*
-  **host**: SMTP host.
-  **port**: SMTP port.
-  **username**: email account username.
-  **password**: email account password.
+    interval: time interval (in seconds) of the service's main loop.
+    cs_emails: email addresses of CivilSphere team for receiving notifications.
 
-  *subject*
-  Email subjects for different messages sent by the manager.
+**credentials**
 
-  *body*
-  Email body for different messages sent by the manager.
+    host: SMTP host.
+    port: SMTP port.
+    username: email account username.
+    password: email account password.
+
+**subject**
+
+    Email subjects for different messages sent by the manager.
+
+**body**
+
+    Email body for different messages sent by the manager.
 
 # Database
 **csvpn** uses an SQLite database to store information about new accounts. We 
@@ -108,13 +116,13 @@ account or to receive help about its usage, depending on the body of the
 message. The structure of the database is very simple, and it contains one
 table *requests* with the following columns:
 
-  **email_addr**: Email address of the request.
-  **command**: Command extracted from the request. It could be *account* or
-  *help*.
-  **start_date**: The date when the account was created. Format Y-m-d.
-  **expiration_date**: The date when the account will expire.
-  **status**: account's status.
-  **ip_addr**: IP address allocated in OpenVPN for the account.
+    email_addr: Email address of the request.
+    command: Command extracted from the request. It could be `account` or
+    `help`.
+    start_date: The date when the account was created. Format Y-m-d.
+    expiration_date: The date when the account will expire.
+    status: account's status.
+    ip_addr: IP address allocated in OpenVPN for the account.
 
 # License
 
