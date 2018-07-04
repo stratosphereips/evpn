@@ -85,24 +85,34 @@ class Accounts(Base):
         """
         Generate an internal IP for a new account.
 
-        :return: string with the IP address.
+        :return: IPv4Address object.
         :raises: IPError if there is no IP available for the new account.
         """
         found = False
         for ip_addr in self.subnet.hosts():
             ip_addr_str = str(ip_addr)
-            log.debug("ACCOUNTS:: Checking if {} is free.".format(ip_addr_str))
+            ip_addr_list = ip_addr_str.split('.')
 
-            # TODO: if csvpn crashes it should look for active accounts, get
-            # their allocated ips and load them into memory
-            if ip_addr_str not in self.allocated_ips:
-                log.debug("ACCOUNTS:: Found {} available".format(ip_addr_str))
-                self.allocated_ips.append(ip_addr_str)
-                found = True
-                break
+            # OpenVPN uses 4k+1 and 4k+2 for static IP allocation
+            if ((int(ip_addr_list[3])-1)%4 == 0):
+                log.debug("ACCOUNTS:: Checking if {} is free.".format(
+                        ip_addr_str
+                    )
+                )
+
+                # TODO: if csvpn crashes it should look for active accounts,
+                # get their allocated ips and load them into memory
+                if ip_addr_str not in self.allocated_ips:
+                    log.debug("ACCOUNTS:: Found {} available".format(
+                            ip_addr_str
+                        )
+                    )
+                    self.allocated_ips.append(ip_addr_str)
+                    found = True
+                    break
 
         if found:
-            return ip_addr_str
+            return ip_addr
         else:
             log.debug("ACCOUNTS:: Could not find a free IP address!")
             raise IPError("IP error")
@@ -152,7 +162,7 @@ class Accounts(Base):
         Create configuration file for static IP allocation.
 
         :param username (str): account username
-        :param ip_addr (str): IP address allocated for the account.
+        :param ip_addr (IPv4Address): IP address allocated for the account.
         """
         log.info("ACCOUNTS:: Creating IP file for client.")
 
@@ -160,11 +170,22 @@ class Accounts(Base):
         # be the same as the username
         ip_filename = os.path.join(self.path['client-ips'], username)
         log.debug("ACCOUNTS: Creating {} with {}.".format(
-            ip_filename, ip_addr
+                ip_filename, ip_addr
             )
         )
 
-        data = "ifconfig-push {} {}\n".format(ip_addr, self.netmask)
+        # From `Configuring client-specific rules and access policies` in
+        # https://openvpn.net/index.php/open-source/documentation/howto.html
+        virtual_client = ip_addr
+        server_endpoint = ip_addr + 1
+
+        log.debug("ACCOUNTS:: ifconfig-push {} {}".format(
+                virtual_client, server_endpoint
+            )
+        )
+        data = "ifconfig-push {} {}\n".format(
+            str(virtual_client), str(server_endpoint)
+        )
         with open(ip_filename, 'w+') as f:
             fd = f.fileno()
             setNonBlocking(fd)
