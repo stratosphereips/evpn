@@ -40,7 +40,8 @@ class ExecError(Exception):
 
 class AddressError(Exception):
     """
-    Error if email address is not valid or we can't normalize it.
+    Error if email address is not valid, it can't be normalized or it has
+    reached the limit of requests.
     """
     pass
 
@@ -110,7 +111,7 @@ class Base(object):
         :return: deferred whose callback/errback will log database query
         execution details.
         """
-        query = 'select * from requests where status=?'
+        query = "select * from requests where status=?"
 
         log.debug(
             "DATABASE:: Asking for requests with status {}.".format(
@@ -121,21 +122,64 @@ class Base(object):
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
-    def _update_status(self, email_addr, status):
+    def _update_status(self, username, status):
 
         """
         Update request status.
 
-        :param email_addr (str): account's email address (identifier).
+        :param username (str): account's username (identifier).
         :param status (str): new request's status.
 
         :return: deferred whose callback/errback will log database query
         execution details.
         """
-        query = "update requests set status=? where email_addr=?"
+        query = "update requests set status=? where username=?"
 
         log.debug("DATABASE:: Updating request to status {}.".format(status))
-        return self.dbpool.runQuery(query, (status, email_addr)).\
+        return self.dbpool.runQuery(query, (status, username)).\
+            addCallback(self.cb_db_query).\
+            addErrback(self.eb_db_query)
+
+    def _delete_request(self, username):
+        """
+        Delete request. This is to avoid database flooding.
+
+        :param username (str): account's username (identifier).
+
+        :return: deferred whose callback/errback will log database query
+        execution details.
+        """
+        query = "delete from requests where username=?"
+
+        log.debug("DATABASE:: Deleting request with id {}.".format(username))
+        return self.dbpool.runQuery(query, (username,)).\
+            addCallback(self.cb_db_query).\
+            addErrback(self.eb_db_query)
+
+    def _get_num_requests(self, email_addr, statuses):
+        """
+        Get the number of requests associated to an email address. This
+        is to prevent abuse of the service and email flooding.
+
+        :param email_addr (str): the email address of the sender.
+        :param statuses (list): statuses for filtering requests.
+
+        :return: deferred whose callback/errback will log database query
+        execution details.
+        """
+        questionmarks = '?' * len(statuses)
+        questionmarks = ','.join(questionmarks)
+        query = "select count(rowid) from requests where email_addr=? and" \
+                " status in ({})".format(questionmarks)
+
+        log.debug("DATABASE:: Getting number of requests from {}.".format(
+                email_addr
+            )
+        )
+
+        params = [email_addr]
+        params.extend(statuses)
+        return self.dbpool.runQuery(query, params).\
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
@@ -154,6 +198,8 @@ class Base(object):
         empty results.
         """
         log.debug("DATABASE:: Empty query or error.")
+        if error:
+            log.debug("DATABASE:: {}".format(error))
         return None
 
     def cb_cmd(self, output):
