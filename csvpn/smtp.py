@@ -20,7 +20,7 @@ from twisted.internet import defer
 from twisted.mail.smtp import sendmail
 
 # local imports
-from utils import log, Base, SMTPError
+from utils import log, Base, AddressError, SMTPError
 
 
 class Messages(Base):
@@ -47,6 +47,9 @@ class Messages(Base):
         self.password = config.get('credentials', 'password')
         # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
+        # Limit of help requests per email address
+        self.max_help_requests = int(config.get('general',
+                                 'max_help_requests'))
         # CivilSphere team email address(es) for getting notifications
         self.cs_emails = config.get('general', 'cs_emails')
 
@@ -154,11 +157,22 @@ class Messages(Base):
         pending_profiles = yield self._get_requests('PROFILE_PENDING')
         expired_accounts = yield self._get_requests('EXPIRED_PENDING')
 
-        try:
-            if pending_help:
+        if pending_help:
+            try:
                 log.info("SMTP:: Got pending messages for help.")
                 for request in pending_help:
-                    email_addr = request[0]
+                    username = request[0]
+                    email_addr = request[1]
+
+                    num_requests = yield self._get_num_requests(
+                        email_addr, ["HELP", "HELP_PENDING"]
+                    )
+                    if num_requests[0][0] > self.max_help_requests:
+                        raise AddressError("{}: {}".format(
+                            email_addr, str(num_requests[0][0]))
+                        )
+
+
                     log.info("SMTP:: Sending help message to {}.".format(
                             email_addr
                         )
@@ -167,19 +181,31 @@ class Messages(Base):
                         email_addr, "plain", self.msg['help_subject'],
                         self.msg['help_body']
                     )
-                    yield self._update_status(email_addr, "HELP")
+                    yield self._update_status(username, "HELP")
 
-            elif pending_profiles:
+            except AddressError as error:
+                log.info("SMTP:: Too many help requests {}: {}".format(
+                        email_addr, error
+                    )
+                )
+                # Delete it to avoid database flooding
+                yield self._delete_request(username)
+
+            except SMTPError as error:
+                log.info("SMTP:: Error sending email: {}.".format(error))
+
+        elif pending_profiles:
+            try:
                 log.info("SMTP:: Got pending messages for profiles.")
                 for request in pending_profiles:
-                    email_addr = request[0]
-                    username, domain = email_addr.split('@')
+                    username = request[0]
+                    email_addr = request[1]
 
                     ovpn_file = "{}{}.ovpn".format(
                         self.path['profiles'], username
                     )
                     log.info("SMTP:: Sending VPN profile to {}.".format(
-                        email_addr
+                            email_addr
                         )
                     )
                     yield self.sendmail(
@@ -193,11 +219,16 @@ class Messages(Base):
                         self.msg['profile_cc_subject'],
                         self.msg['profile_cc_body']
                     )
-                    yield self._update_status(email_addr, "ACTIVE")
-            elif expired_accounts:
+                    yield self._update_status(username, "ACTIVE")
+
+            except SMTPError as error:
+                log.info("SMTP:: Error sending email: {}.".format(error))
+        elif expired_accounts:
+            try:
                 log.info("SMTP:: Got pending messages for expired accounts.")
                 for request in expired_accounts:
-                    email_addr = request[0]
+                    username = request[0]
+                    email_addr = request[1]
                     log.info(
                         "SMTP:: Sending expiration message to {}.".format(
                             email_addr
@@ -214,9 +245,9 @@ class Messages(Base):
                         self.msg['expired_cc_subject'],
                         self.msg['expired_cc_body']
                     )
-                    yield self._update_status(email_addr, "EXPIRED")
-            else:
-                log.debug("SMTP:: No pending messages - Keep waiting.")
+                    yield self._update_status(username, "EXPIRED")
 
-        except SMTPError as error:
-            log.info("SMTP:: Error sending email: {}.".format(error))
+            except SMTPError as error:
+                log.info("SMTP:: Error sending email: {}.".format(error))
+        else:
+            log.debug("SMTP:: No pending messages - Keep waiting.")
