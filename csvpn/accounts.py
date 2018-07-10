@@ -20,7 +20,26 @@ from twisted.internet import defer, protocol, utils
 from twisted.internet.fdesc import writeToFD, setNonBlocking
 
 # local imports
-from utils import log, Base, IPError, ExecError
+from utils import log, Base, AddressError, IPError, ExecError
+
+
+class CustomProcessProtocol(protocol.ProcessProtocol):
+    """
+    Custom class to handle Process Protocol behaviour. Right now mostly for
+    logging purposes.
+    """
+
+    def connectionMade(self):
+        log.debug("PROCESS:: process started")
+
+    def outConnectionLost(self):
+        log.debug("PROCESS:: Connection lost")
+
+    def processExited(self, status):
+        log.debug("PROCESS:: Process exited: {}".format(status))
+
+    def processEnded(self, status):
+        log.debug("PROCESS:: Process ended: {}".format(status))
 
 
 class Accounts(Base):
@@ -51,35 +70,71 @@ class Accounts(Base):
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
         self.path['pcaps'] = config.get('path', 'pcaps')
 
-        # More flexible if we change the environment or add capabilities for
-        # the traffic capture
-        self.tcpdump_bin = config.get('tcpdump', 'bin')
+        # tcpdump binary should be first argument, and -i interface must be
+        # present
         self.tcpdump_args = config.get('tcpdump', 'args')
         self.tcpdump_args = self.tcpdump_args.split(',')
-        self.tcpdump_interface = config.get('tcpdump', 'interface')
 
         # Network info to allocate ip addresses for new accounts
         self.netrange = config.get('network', 'range')
         self.netmask = config.get('network', 'mask')
         subnet_str = "{}/{}".format(self.netrange, self.netmask)
         self.subnet = ip_network(unicode(subnet_str))
-        server_ip = config.get('network', 'server_ip')
-        self.allocated_ips = []
+        # Default to OpenVPN IP, but can include others also
+        self.reserved_ips = config.get('network', 'reserved_ips')
         # Keep allocated ips in memory
-        self.allocated_ips.append(server_ip)
+        self.allocated_ips = self.reserved_ips.split(',')
 
         # Period of life for an account (in days)
         self.expiration_days = int(config.get('general', 'expiration_days'))
         # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
+        # Limit of account requests per email address
+        self.max_account_requests = int(config.get('general', 
+                                    'max_account_requests'))
 
         # Keep process information of running tcpdumps. It makes it easier to
         # kill traffic captures when an account expires
         self.capture_processes = {}
         # TODO: note that if csvpn crashes all running tcpdumps will die
         # We should look for active accounts and start capturing traffic again
+        from twisted.internet import reactor
+        self.reactor = reactor
 
         Base.__init__(self)
+
+        log.info("ACCOUNTS:: Loading active captures.")
+        self._load_active_captures()
+
+    @defer.inlineCallbacks
+    def _load_active_captures(self):
+        """
+        Start traffic capture for active accounts. Traffic capture is started
+        only after an account has been activated. If the csvpn crashes before
+        an account expires there won't be captures. Here we make sure that
+        won't happen. This also prevents we reuse an allocated IP.
+        """
+        log.info("ACCOUNTS: Checking for ACTIVE accounts.")
+        active_accounts = yield self._get_requests("ACTIVE")
+
+        if active_accounts:
+            log.info("ACCOUNTS:: ACTIVE accounts found.")
+            for account in active_accounts:
+                username = account[0]
+                ip = account[6]
+                try:
+                    # ExecError in case of failure
+                    yield self._start_traffic_capture(username, ip)
+                    self.allocated_ips.append(ip)
+                except ExecError as error:
+                    log.info(
+                        "ACCOUNTS:: Error executing system command.".format(
+                            error
+                        )
+                    )
+                    yield self._update_status(username, "EXEC_ERROR")
+        else:
+            log.info("ACCOUNTS:: No ACTIVE accounts found.")
 
     def _generate_ip(self):
         """
@@ -170,7 +225,7 @@ class Accounts(Base):
         # be the same as the username
         ip_filename = os.path.join(self.path['client-ips'], username)
         log.debug("ACCOUNTS: Creating {} with {}.".format(
-                ip_filename, ip_addr
+                ip_filename, str(ip_addr)
             )
         )
 
@@ -196,38 +251,36 @@ class Accounts(Base):
         Start traffic capture.
 
         :param username (str): account username
-        :param ip_addr (str): IP address allocated for the account.
+        :param ip_addr (IPv4Address): IP address allocated for the account.
 
         :return: deferred whose callback/errback will log command execution
         details.
         """
         log.debug(
             "ACCOUNTS:: Starting capture traffic for {} with IP {}.".format(
-                username, ip_addr
+                username, str(ip_addr)
             )
         )
 
-        now_str = datetime.now().strftime("%Y-%m-%d")
-        pcap_file = "{}_{}_{}.pcap".format(username, ip_addr, now_str)
+        pcap_file = "{}_{}.pcap".format(username, str(ip_addr))
         pcap_file = os.path.join(self.path['pcaps'], pcap_file)
+        log.debug("ACCOUNTS:: pcap file {}".format(pcap_file))
 
-        # Always add -i (interface), -w (output file), and host (filter) args
-        cap_args = self.tcpdump_args
-        cap_args.append("-i")
-        cap_args.append(self.tcpdump_interface)
-        cap_args.append("-w")
-        cap_args.append(pcap_file)
-        cap_args.append("host")
-        cap_args.append(ip_addr)
-
+        # Always add -w (output file), and host (filter) args
+        # Network interface should be set on config file
+        cap_args = []
+        cap_args.extend(self.tcpdump_args)
+        cap_args.extend(["-w", pcap_file, "host", str(ip_addr)])
+        
         # This process will not appear in `ps`, and it will die together with
         # csvpn if it is not killed before
-        pp = protocol.ProcessProtocol()
-        from twisted.internet import reactor
-        p = reactor.spawnProcess(pp, self.tcpdump_bin, args=cap_args)
+        pp = CustomProcessProtocol()
+        p = self.reactor.spawnProcess(
+            pp, cap_args[0], args=cap_args, env=os.environ,
+        )
 
         # Keep process info in memory to kill it after
-        k = "{}-{}".format(username, ip_addr)
+        k = "{}-{}".format(username, str(ip_addr))
         self.capture_processes[k] = (pp, p.pid)
 
     def _stop_traffic_capture(self, username, ip_addr):
@@ -235,13 +288,13 @@ class Accounts(Base):
         Stop traffic capture.
 
         :param username (str): account username
-        :param ip_addr (str): IP address allocated for the account.
+        :param ip_addr (IPv4Address): IP address allocated for the account.
 
         :return: deferred whose callback/errback will log command execution
         details.
         """
         log.info("ACCOUNTS:: Stopping traffic capture")
-        k = "{}-{}".format(username, ip_addr)
+        k = "{}-{}".format(username, str(ip_addr))
         p = self.capture_processes[k]
 
         log.debug("ACCOUNTS:: Killing process with PID {}".format(str(p[1])))
@@ -293,12 +346,12 @@ class Accounts(Base):
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
-    def _set_ip_expiration_date(self, email_addr, ip_addr):
+    def _set_ip_expiration_date(self, username, ip_addr):
         """
         Set allocated IP and expiration for an account.
 
-        :param email_addr (str): email address (identifier) of the account.
-        :param ip_addr (str): IP address allocated for the account.
+        :param username (str): username (identifier) of the account.
+        :param ip_addr (IPv4Address): IP address allocated for the account.
 
         :return: deferred whose callback/errback will log database query
         execution details.
@@ -309,17 +362,18 @@ class Accounts(Base):
         exp_date_str = exp_date.strftime("%Y-%m-%d")
 
         query = "update requests set ip_addr=?, start_date=?, \
-        expiration_date=? where email_addr=?"
+        expiration_date=? where username=?"
 
         log.debug(
             "ACCOUNTS:: Setting IP, start and expiration date to {}, {}, {}.\
-            ".format(ip_addr, start_date_str, exp_date_str)
+            ".format(str(ip_addr), start_date_str, exp_date_str)
         )
 
         return self.dbpool.runQuery(
             query,
-            (ip_addr, start_date_str, exp_date_str, email_addr)
+            (str(ip_addr), start_date_str, exp_date_str, username)
         ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
+
 
     @defer.inlineCallbacks
     def _get_new(self):
@@ -333,15 +387,25 @@ class Accounts(Base):
         if new_requests:
             log.info("ACCOUNTS:: Got new requests for accounts.")
             for request in new_requests:
-                email_addr = request[0]
-                username, domain = email_addr.split('@')
+                username = request[0]
+                email_addr = request[1]
                 try:
                     log.info(
                         "ACCOUNTS:: Processing request for {}".format(
-                            email_addr
+                            username
                         )
                     )
-                    yield self._update_status(email_addr, "IN_PROCESS")
+                    num_requests = yield self._get_num_requests(
+                        email_addr, ["IN_PROCESS", "ACTIVE",
+                        "PROFILE_PENDING", "EXPIRED", "EXEC_ERROR"]
+                    )
+                    if num_requests[0][0] > self.max_account_requests:
+                        raise AddressError("{}".format(
+                                str(num_requests[0][0])
+                            )
+                        )
+
+                    yield self._update_status(username, "IN_PROCESS")
                     # ExecError in case of failure
                     yield self._create_key(username)
                     # IPError in case of failure
@@ -351,8 +415,8 @@ class Accounts(Base):
                     yield self._create_ipfile(username, ip)
                     # ExecError in case of failure
                     yield self._start_traffic_capture(username, ip)
-                    yield self._set_ip_expiration_date(email_addr, ip)
-                    yield self._update_status(email_addr, "PROFILE_PENDING")
+                    yield self._set_ip_expiration_date(username, ip)
+                    yield self._update_status(username, "PROFILE_PENDING")
                     log.info(
                         "ACCOUNTS:: Account ready for {} with IP {}. Profile"
                         ".ovpn on queue to be sent to {}.".format(
@@ -365,14 +429,22 @@ class Accounts(Base):
                             error
                         )
                     )
-                    yield self._update_status(email_addr, "NO_IP_AVAILABLE")
+                    yield self._update_status(username, "NO_IP_AVAILABLE")
                 except ExecError as error:
                     log.info(
                         "ACCOUNTS:: Error executing system command.".format(
                             error
                         )
                     )
-                    yield self._update_status(email_addr, "EXEC_ERROR")
+                    yield self._update_status(username, "EXEC_ERROR")
+                except AddressError as error:
+                    log.info(
+                        "ACCOUNTS:: Too many requests from {}: {}".format(
+                            email_addr, error
+                        )
+                    )
+                    # Delete it to avoid database flooding
+                    yield self._delete_request(username)
         else:
             log.info("ACCOUNTS:: No requests - Keep waiting.")
 
@@ -382,13 +454,12 @@ class Accounts(Base):
             log.info("ACCOUNTS:: Got expired accounts.")
             for request in expired:
                 try:
-                    email_addr, ip = request[0], request[5]
-                    username, domain = email_addr.split('@')
+                    username, ip = request[0], request[6]
                     yield self._stop_traffic_capture(username, ip)
                     # ExecError in case of failure
                     yield self._revoke_user(username)
                     yield self._delete_ipfile(username)
-                    yield self._update_status(email_addr, "EXPIRED")
+                    yield self._update_status(username, "EXPIRED_PENDING")
                     log.info(
                         "ACCOUNTS:: Account {} revoked and expired.".format(
                             username
@@ -400,6 +471,6 @@ class Accounts(Base):
                             error
                         )
                     )
-                    yield self._update_status(email_addr, "EXEC_ERROR")
+                    yield self._update_status(username, "EXEC_ERROR")
         else:
             log.info("ACCOUNTS:: No expired accounts - Keep waiting.")
