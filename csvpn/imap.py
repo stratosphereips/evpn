@@ -13,6 +13,7 @@ import re
 import dkim
 import validate_email
 
+from datetime import datetime
 from ConfigParser import ConfigParser
 
 from email import message_from_string
@@ -280,9 +281,9 @@ class Fetchmail(Base):
 
     def parse_message(self, mid, headers, body):
         """
-        Parse message content. Check if email address is well formed and if
-        DKIM signature is valid. Finally, look for commands to process the
-        request. Current commands are:
+        Parse message content. Check if email address is well formed, if DKIM
+        signature is valid, and prevent service flooding. Finally, look for
+        commands to process the request. Current commands are:
 
             - vpn account: request a new VPN account.
             - anything else is processed as a help request.
@@ -363,7 +364,12 @@ class Fetchmail(Base):
             request['email_addr'], request['command'])
         )
 
-        query = "insert into requests values(?, ?, '', '', ?, '')"
+        query = "insert into requests values(?, ?, ?, '', '', ?, '')"
+
+        # Generate username based on email prefix and current date.
+        username, domain = request['email_addr'].split('@')
+        now_str = datetime.now().strftime("%Y%m%d%H%M%S")
+        username = "{}-{}".format(username, now_str)
 
         # Account requests are set to ONHOLD to be processed by the Accounts
         # serice. Help requests are set to HELP_PENDING to be processed by the
@@ -372,6 +378,7 @@ class Fetchmail(Base):
             log.debug("IMAP:: Inserting new request with status ONHOLD.")
             return self.dbpool.runQuery(
                 query, (
+                    username,
                     request['email_addr'],
                     request['command'],
                     "ONHOLD"
@@ -381,6 +388,7 @@ class Fetchmail(Base):
             log.debug("IMAP:: Inserting new request with status HELP_PENDING.")
             return self.dbpool.runQuery(
                 query, (
+                    username,
                     request['email_addr'],
                     request['command'],
                     "HELP_PENDING"
