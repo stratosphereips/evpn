@@ -222,8 +222,8 @@ class Messages(Base):
                     yield self.sendmail(
                         self.cs_emails,
                         "plain",
-                        self.msg['profile_cc_subject'],
-                        self.msg['profile_cc_body']
+                        self.msg['profile_cc_subject'].format(username),
+                        self.msg['profile_cc_body'].format(username)
                     )
                     yield self._update_status(username, "ACTIVE")
 
@@ -248,8 +248,8 @@ class Messages(Base):
                     yield self.sendmail(
                         self.cs_emails,
                         "plain",
-                        self.msg['expired_cc_subject'],
-                        self.msg['expired_cc_body']
+                        self.msg['expired_cc_subject'].format(username),
+                        self.msg['expired_cc_body'].format(username)
                     )
                     yield self._update_status(username, "EXPIRED")
 
