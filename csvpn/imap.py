@@ -318,6 +318,11 @@ class Fetchmail(Base):
             log.debug("IMAP:: Error normalizing/validating email address.")
             raise AddressError("Invalid email address {}".format(from_header))
 
+        whitelist = ['vpn@aic.fel.cvut.cz', 'mailer-daemon@googlemail.com']
+        if norm_addr in whitelist:
+            log.debug("IMAP:: Ignoring message from {}".format(norm_addr))
+            raise AddressError("Email address in whitelist")
+
         # DKIM verification. Simply check that the server has verified the
         # message's signature
         log.info("IMAP:: Checking DKIM signature.")
