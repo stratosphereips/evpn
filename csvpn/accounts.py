@@ -246,6 +246,9 @@ class Accounts(Base):
             setNonBlocking(fd)
             writeToFD(fd, data)
 
+        fp = FilePath(ip_filename)
+        fp.chmod(0644)
+
     def _start_traffic_capture(self, username, ip_addr):
         """
         Start traffic capture.
