@@ -33,7 +33,7 @@ $ twistd -y csvpn.tac --logfile csvpn.log --pidfile csvpn.pid
 
 To stop it just kill it using its process ID stored in csvpn.pid. Once
 **csvpn** is running you can send an email to the defined email address
-with the keywords **vpn account** to request the creation of a new
+with the keywords **vpn** to request the creation of a new
 OpenVPN account. Any other keyword would be considered a help request
 about its usage, and the manager will reply with instructions.
 

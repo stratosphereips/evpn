@@ -332,13 +332,10 @@ class Fetchmail(Base):
         # For parsing we just search for `vpn account` keywords.
         command = "help"
         words = re.split(r"\s+", body_str.strip())
-        prev_word = ""
         for word in words:
-            if prev_word == "vpn" and word.lower() == "account":
+            if word == "vpn":
                 command = "account"
                 break
-            else:
-                prev_word = word.lower()
 
         log.debug("IMAP:: Email body content parsed.")
         if command == 'account':
