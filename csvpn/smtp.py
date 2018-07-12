@@ -10,6 +10,8 @@
 #
 # :license: This is Free Software. See LICENSE for license information.
 
+import os
+
 from ConfigParser import ConfigParser
 
 from email import Encoders
@@ -72,7 +74,8 @@ class Messages(Base):
 
         Base.__init__(self)
 
-    def sendmail(self, email_addr, type, subject, content, file=None):
+    def sendmail(self, email_addr, type, subject, content, file=None,
+        filename=None):
         """
         Send an email message. It creates a plain text or mime message
         depending on the request's type, set headers and content and
@@ -83,6 +86,7 @@ class Messages(Base):
         :param subject (str): subject of the message.
         :param content (str): content of the message.
         :param file (str): path to file to be attached (optional).
+        :param filename (str): attachment's filename (optional).
 
         :return: deferred whose callback/errback will handle the SMTP
         execution details.
@@ -111,8 +115,7 @@ class Messages(Base):
             )
             Encoders.encode_base64(attachment)
             attachment.add_header(
-                "Content-Disposition",
-                "attachment; filename={}".format(file)
+                "Content-Disposition", "attachment", filename=filename
             )
             message.attach(attachment)
 
@@ -201,16 +204,19 @@ class Messages(Base):
                     username = request[0]
                     email_addr = request[1]
 
-                    ovpn_file = "{}{}.ovpn".format(
-                        self.path['profiles'], username
+                    ovpn_filename = "{}.ovpn".format(username)
+                    ovpn_file = os.path.join(
+                        self.path['profiles'],
+                        ovpn_filename
                     )
+
                     log.info("SMTP:: Sending VPN profile to {}.".format(
                             email_addr
                         )
                     )
                     yield self.sendmail(
                         email_addr, "mime", self.msg['profile_subject'],
-                        self.msg['profile_body'], ovpn_file
+                        self.msg['profile_body'], ovpn_file, ovpn_filename
                     )
                     # Notify CivilSphere team
                     yield self.sendmail(
