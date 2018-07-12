@@ -476,4 +476,4 @@ class Accounts(Base):
                     )
                     yield self._update_status(username, "EXEC_ERROR")
         else:
-            log.info("ACCOUNTS:: No expired accounts - Keep waiting.")
+            log.debug("ACCOUNTS:: No expired accounts - Keep waiting.")

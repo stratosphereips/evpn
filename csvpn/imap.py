@@ -425,5 +425,5 @@ class Fetchmail(Base):
         )
         endpoint = endpoints.wrapClientTLS(contextFactory, endpoint)
 
-        log.info("IMAP:: Connecting to Google's IMAP servers.")
+        log.debug("IMAP:: Connecting to Google's IMAP servers.")
         endpoint.connect(factory)
