@@ -471,6 +471,7 @@ class Accounts(Base):
             for request in expired:
                 try:
                     username, ip = request[0], request[6]
+                    yield self._update_status(username, "EXPIRED_IN_PROCESS")
                     yield self._stop_traffic_capture(username, ip)
                     # ExecError in case of failure
                     yield self._revoke_user(username)
