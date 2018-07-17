@@ -381,7 +381,7 @@ class Accounts(Base):
                 username = account[0]
                 ip = account[6]
                 k = "{}-{}".format(username, ip)
-                if not capture_processes[k]:
+                if capture_processes.get(k) is None:
                     try:
                         # ExecError in case of failure
                         yield self._start_traffic_capture(username, ip)
