@@ -338,7 +338,7 @@ class Fetchmail(Base):
         command = "help"
         words = re.split(r"\s+", body_str.strip())
         for word in words:
-            if word == "vpn":
+            if word.lower() == "vpn":
                 command = "account"
                 break
 
