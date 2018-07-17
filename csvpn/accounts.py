@@ -23,11 +23,25 @@ from twisted.internet.fdesc import writeToFD, setNonBlocking
 from utils import log, Base, AddressError, IPError, ExecError
 
 
+# Keep process information of running tcpdumps. It makes it easier to
+# kill traffic captures when an account expires
+capture_processes = {}
+
+
 class CustomProcessProtocol(protocol.ProcessProtocol):
     """
     Custom class to handle Process Protocol behaviour. Right now mostly for
     logging purposes.
     """
+    def __init__(self, username, ip_addr):
+        self.username = username
+        self.ip_addr = ip_addr
+
+    def set_process(self, p):
+        self.process = p
+
+    def get_process(self):
+        return p
 
     def connectionMade(self):
         log.debug("PROCESS:: process started")
@@ -37,9 +51,13 @@ class CustomProcessProtocol(protocol.ProcessProtocol):
 
     def processExited(self, status):
         log.debug("PROCESS:: Process exited: {}".format(status))
+        k = "{}-{}".format(self.username, self.ip_addr)
+        capture_processes[k] = None
 
     def processEnded(self, status):
         log.debug("PROCESS:: Process ended: {}".format(status))
+        k = "{}-{}".format(self.username, self.ip_addr)
+        capture_processes[k] = None
 
 
 class Accounts(Base):
@@ -93,48 +111,13 @@ class Accounts(Base):
         self.max_account_requests = int(config.get('general', 
                                     'max_account_requests'))
 
-        # Keep process information of running tcpdumps. It makes it easier to
-        # kill traffic captures when an account expires
-        self.capture_processes = {}
         # TODO: note that if csvpn crashes all running tcpdumps will die
         # We should look for active accounts and start capturing traffic again
         from twisted.internet import reactor
         self.reactor = reactor
 
         Base.__init__(self)
-
-        log.info("ACCOUNTS:: Loading active captures.")
-        self._load_active_captures()
-
-    @defer.inlineCallbacks
-    def _load_active_captures(self):
-        """
-        Start traffic capture for active accounts. Traffic capture is started
-        only after an account has been activated. If the csvpn crashes before
-        an account expires there won't be captures. Here we make sure that
-        won't happen. This also prevents we reuse an allocated IP.
-        """
-        log.info("ACCOUNTS: Checking for ACTIVE accounts.")
-        active_accounts = yield self._get_requests("ACTIVE")
-
-        if active_accounts:
-            log.info("ACCOUNTS:: ACTIVE accounts found.")
-            for account in active_accounts:
-                username = account[0]
-                ip = account[6]
-                try:
-                    # ExecError in case of failure
-                    yield self._start_traffic_capture(username, ip)
-                    self.allocated_ips.append(ip)
-                except ExecError as error:
-                    log.info(
-                        "ACCOUNTS:: Error executing system command.".format(
-                            error
-                        )
-                    )
-                    yield self._update_status(username, "EXEC_ERROR")
-        else:
-            log.info("ACCOUNTS:: No ACTIVE accounts found.")
+        
 
     def _generate_ip(self):
         """
@@ -277,14 +260,15 @@ class Accounts(Base):
         
         # This process will not appear in `ps`, and it will die together with
         # csvpn if it is not killed before
-        pp = CustomProcessProtocol()
+        pp = CustomProcessProtocol(username, str(ip_addr))
         p = self.reactor.spawnProcess(
             pp, cap_args[0], args=cap_args, env=os.environ,
         )
+        pp.set_process(p)
 
         # Keep process info in memory to kill it after
         k = "{}-{}".format(username, str(ip_addr))
-        self.capture_processes[k] = (pp, p.pid)
+        capture_processes[k] = pp
 
     def _stop_traffic_capture(self, username, ip_addr):
         """
@@ -298,7 +282,8 @@ class Accounts(Base):
         """
         log.info("ACCOUNTS:: Stopping traffic capture")
         k = "{}-{}".format(username, str(ip_addr))
-        p = self.capture_processes[k]
+        pp = capture_processes[k]
+        p = pp.get_process()
 
         log.debug("ACCOUNTS:: Killing process with PID {}".format(str(p[1])))
         p[0].transport.signalProcess("KILL")
@@ -384,6 +369,34 @@ class Accounts(Base):
         Get new requests to process. This will define the `main loop` of
         the Accounts service.
         """
+
+        # check for stopped captures that need to be loaded (in case tcpdump
+        # died unexpectedly)
+        log.info("ACCOUNTS: Checking ACTIVE accounts with no captures.")
+        active_accounts = yield self._get_requests("ACTIVE")
+
+        if active_accounts:
+            log.debug("ACCOUNTS:: ACTIVE accounts found.")
+            for account in active_accounts:
+                username = account[0]
+                ip = account[6]
+                k = "{}-{}".format(username, ip)
+                if not capture_processes[k]:
+                    try:
+                        # ExecError in case of failure
+                        yield self._start_traffic_capture(username, ip)
+                        self.allocated_ips.append(ip)
+                    except ExecError as error:
+                        log.debug(
+                            "ACCOUNTS:: Error executing command.".format(
+                                error
+                            )
+                        )
+                        yield self._update_status(username, "EXEC_ERROR")
+                else:
+                    log.debug("ACCOUNTS:: No inactive captures.")
+        else:
+            log.debug("ACCOUNTS:: No ACTIVE accounts found.")
 
         # check requests to create new accounts
         new_requests = yield self._get_requests("ONHOLD")
