@@ -203,6 +203,7 @@ class Messages(Base):
                 for request in pending_profiles:
                     username = request[0]
                     email_addr = request[1]
+                    ip_addr = request[6]
 
                     ovpn_filename = "{}.ovpn".format(username)
                     ovpn_file = os.path.join(
@@ -223,7 +224,7 @@ class Messages(Base):
                         self.cs_emails,
                         "plain",
                         self.msg['profile_cc_subject'].format(username),
-                        self.msg['profile_cc_body'].format(username)
+                        self.msg['profile_cc_body'].format(username, ip_addr)
                     )
                     yield self._update_status(username, "ACTIVE")
 
@@ -249,7 +250,7 @@ class Messages(Base):
                         self.cs_emails,
                         "plain",
                         self.msg['expired_cc_subject'].format(username),
-                        self.msg['expired_cc_body'].format(username)
+                        self.msg['expired_cc_body'].format(username, ip_addr)
                     )
                     yield self._update_status(username, "EXPIRED")
 
