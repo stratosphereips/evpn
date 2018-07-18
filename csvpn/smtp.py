@@ -68,9 +68,14 @@ class Messages(Base):
         self.msg['profile_cc_body'] = config.get('body', 'profile_cc')
         self.msg['expired_cc_body'] = config.get('body', 'expired_cc')
 
+        # Make new lines work
+        for k in self.msg:
+            self.msg[k] = self.msg[k].replace('\\n', '\n')
+
         # Useful paths
         self.path = {}
         self.path['profiles'] = config.get('path', 'profiles')
+        self.path['mobile_tutorial'] = config.get('path', 'mobile_tutorial')
 
         Base.__init__(self)
 
@@ -82,7 +87,7 @@ class Messages(Base):
         finally send it.
 
         :param email_addr (str): email address of the recipient.
-        :param type (str): type of message to create (plain or mime).
+        :param type (str): type of message to create (help or mime).
         :param subject (str): subject of the message.
         :param content (str): content of the message.
         :param file (str): path to file to be attached (optional).
@@ -109,15 +114,29 @@ class Messages(Base):
         if type == "mime":
             attach_content = MIMEText(content, 'plain')
             message.attach(attach_content)
-            attachment = MIMEBase('application', "octet-stream")
-            attachment.set_payload(
+
+            # Attach profile
+            profile_attachment = MIMEBase('application', "octet-stream")
+            profile_attachment.set_payload(
                 open(file, "rb").read()
             )
-            Encoders.encode_base64(attachment)
-            attachment.add_header(
+            Encoders.encode_base64(profile_attachment)
+            profile_attachment.add_header(
                 "Content-Disposition", "attachment", filename=filename
             )
-            message.attach(attachment)
+            message.attach(profile_attachment)
+
+            # Attach mobile tutorial
+            mobile_attachment = MIMEBase('application', "octet-stream")
+            mobile_attachment.set_payload(
+                open(self.path['mobile_tutorial'], "rb").read()
+            )
+            Encoders.encode_base64(mobile_attachment)
+            mobile_attachment.add_header(
+                "Content-Disposition", "attachment",
+                filename="EVPN_tutorial_mobile_devices.pdf"
+            )
+            message.attach(profile_attachment)
 
         # Create a list of email address so twisted.mail.smtp.sendmail
         # knows how to handle it
