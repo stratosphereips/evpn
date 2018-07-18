@@ -136,7 +136,7 @@ class Messages(Base):
                 "Content-Disposition", "attachment",
                 filename="EVPN_tutorial_mobile_devices.pdf"
             )
-            message.attach(profile_attachment)
+            message.attach(mobile_attachment)
 
         # Create a list of email address so twisted.mail.smtp.sendmail
         # knows how to handle it
