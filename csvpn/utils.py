@@ -272,3 +272,52 @@ class BaseService(internet.TimerService):
         log.debug("SERVICE:: Shutdown for {} done".format(self.name))
         internet.TimerService.stopService(self)
         log.info("SERVICE:: Service stopped.")
+
+class GreeterService(internet.TimerService):
+    """
+    Greeter service to notify when csvpn boots or shutdowns. It does nothing
+    at all except send a message on startService and stopService.
+    """
+
+    def __init__(self, name, step, slackbot, channel, *args, **kwargs):
+        """
+        Constructor. Set name, time interval and slackbot.
+
+        :param name (str): name of the service being initiated.
+        :param step (float): time interval for TimerService, in seconds.
+        :param slackbot (object): instance of SlackBot.
+        :param channel (str): destination channel for notifications.
+        """
+
+        log.info("SERVICE:: Initializing {} service.".format(name))
+        self.name = name
+        self.slackbot = slackbot
+        self.channel = channel
+        log.debug("SERVICE:: Initializing TimerService.")
+        internet.TimerService.__init__(
+            self, step, self.do_nothing, **kwargs
+        )
+
+    def do_nothing(self):
+        """ Do nothing. """
+        pass
+
+    def startService(self):
+        """
+        Starts the service. Overridden from parent class to add extra logging
+        information.
+        """
+        log.info("SERVICE:: Starting {} service.".format(self.name))
+        internet.TimerService.startService(self)
+        self.slackbot.post("I am booting.", self.channel)
+        log.info("SERVICE:: Service started.")
+
+    def stopService(self):
+        """
+        Stop the service. Overridden from parent class to close connection to
+        database, shutdown the service and add extra logging information.
+        """
+        log.info("SERVICE:: Stopping {} service.".format(self.name))
+        self.slackbot.post("I am shutting down.", self.channel)
+        internet.TimerService.stopService(self)
+        log.info("SERVICE:: Service stopped.")

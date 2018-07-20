@@ -20,6 +20,7 @@ from twisted.internet import defer, protocol, utils
 from twisted.internet.fdesc import writeToFD, setNonBlocking
 
 # local imports
+from slack import SlackBot
 from utils import log, Base, AddressError, IPError, ExecError
 
 
@@ -87,6 +88,11 @@ class Accounts(Base):
         self.path['client-ips'] = config.get('path', 'client-ips')
         self.path['openvpn-ca'] = config.get('path', 'openvpn-ca')
         self.path['pcaps'] = config.get('path', 'pcaps')
+
+        # Slack notifications
+        slack_config = config.get('slack', 'config')
+        self.slack_channel = config.get('slack', 'channel')
+        self.slackbot = SlackBot(slack_config)
 
         # tcpdump binary should be first argument, and -i interface must be
         # present
@@ -379,13 +385,21 @@ class Accounts(Base):
             log.debug("ACCOUNTS:: ACTIVE accounts found.")
             for account in active_accounts:
                 username = account[0]
-                ip = account[6]
-                k = "{}-{}".format(username, ip)
+                ip_addr = account[6]
+                k = "{}-{}".format(username, ip_addr)
                 if capture_processes.get(k) is None:
                     try:
                         # ExecError in case of failure
-                        yield self._start_traffic_capture(username, ip)
-                        self.allocated_ips.append(ip)
+                        yield self._start_traffic_capture(username, ip_addr)
+                        self.allocated_ips.append(ip_addr)
+
+                        # Notify
+                        yield self.slackbot.post(
+                            "Restarting tcpdump for {} with IP {}".format(
+                                username, ip_addr
+                            ),
+                            self.slack_channel
+                        )
                     except ExecError as error:
                         log.debug(
                             "ACCOUNTS:: Error executing command.".format(
@@ -425,20 +439,27 @@ class Accounts(Base):
                     # ExecError in case of failure
                     yield self._create_key(username)
                     # IPError in case of failure
-                    ip = yield self._generate_ip()
+                    ip_addr = yield self._generate_ip()
                     # ExecError in case of failure
                     yield self._create_profile(username)
-                    yield self._create_ipfile(username, ip)
+                    yield self._create_ipfile(username, ip_addr)
                     # ExecError in case of failure
-                    yield self._start_traffic_capture(username, ip)
-                    yield self._set_ip_expiration_date(username, ip)
+                    yield self._start_traffic_capture(username, ip_addr)
+                    yield self._set_ip_expiration_date(username, ip_addr)
                     yield self._update_status(username, "PROFILE_PENDING")
-                    log.info(
-                        "ACCOUNTS:: Account ready for {} with IP {}. Profile"
-                        ".ovpn on queue to be sent to {}.".format(
-                            username, ip, email_addr
-                        )
+
+                    msg = "New VPN account {} ready with IP {}. Profile "\
+                          ".ovpn on queue to be sent via email.".format(
+                        username, ip_addr
                     )
+                    log.info("ACCOUNTS:: {}".format(msg))
+
+                    # Notify
+                    yield self.slackbot.post(
+                        "{} tcpdump is running!".format(msg),
+                        self.slack_channel
+                    )
+
                 except IPError as error:
                     log.info(
                         "ACCOUNTS:: Error generating IP address: {}.".format(
@@ -477,11 +498,15 @@ class Accounts(Base):
                     yield self._revoke_user(username)
                     yield self._delete_ipfile(username)
                     yield self._update_status(username, "EXPIRED_PENDING")
-                    log.info(
-                        "ACCOUNTS:: Account {} revoked and expired.".format(
-                            username
-                        )
+
+                    msg = "VPN account {} revoked and set to expired.".format(
+                        username
                     )
+                    log.info("ACCOUNTS:: {}".format(msg))
+
+                    # Notify
+                    yield self.slackbot.post(msg, self.slack_channel)
+
                 except ExecError as error:
                     log.info(
                         "ACCOUNTS:: Error executing system command.".format(

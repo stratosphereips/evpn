@@ -25,7 +25,9 @@ from twisted.enterprise import adbapi
 from twisted.internet import ssl, defer, stdio, protocol, endpoints
 
 # local imports
+from slack import SlackBot
 from utils import log, Base, AddressError, DkimError
+
 
 """
 Most of this classes and methods were adapted from Twisted examples.
@@ -124,13 +126,21 @@ class Fetchmail(Base):
         config.read(config_file)
 
         log.debug("IMAP:: Loading configuration values.")
+
         # Credentials and host information
         self.host = config.get('credentials', 'host')
         self.port = int(config.get('credentials', 'port'))
+
         # For our case, we should use Gmail names for mailboxes
         self.mbox = config.get('credentials', 'mbox')
         self.username = config.get('credentials', 'username')
         self.password = config.get('credentials', 'password')
+
+        # Slack notifications
+        slack_config = config.get('slack', 'config')
+        self.slack_channel = config.get('slack', 'channel')
+        self.slackbot = SlackBot(slack_config)
+
         # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
 
@@ -267,6 +277,7 @@ class Fetchmail(Base):
                 except DkimError as e:
                     log.info("IMAP:: DKIM error: {}.".format(e))
 
+                yield self.slackbot.post("Got new mail!", self.slack_channel)
                 log.info("IMAP:: Mail processed.")
 
         # Finish communication. Connect and disconnect rather than keep a

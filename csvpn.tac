@@ -18,13 +18,15 @@ sys.path.insert(0, '.')
 # local imports
 from csvpn.smtp import Messages
 from csvpn.imap import Fetchmail
+from csvpn.slack import SlackBot
 from csvpn.accounts import Accounts
-from csvpn.utils import BaseService, log
+from csvpn.utils import BaseService, GreetService, log
 
 log.info("Loading config files.")
 fetchmail = Fetchmail('imap.cfg')
 accounts = Accounts('accounts.cfg')
 messages = Messages('smtp.cfg')
+slackbot = SlackBot('slackbot.cfg')
 
 log.info("Starting services.")
 
@@ -43,11 +45,17 @@ messages_service = BaseService(
     "messages", messages.get_interval(), messages
 )
 
+# Greeter service for notify on boot and shutdown
+greeter_service = GreetService(
+	"greeter", 100000, slackbot, "civilsphere"
+)
+
 # The heart of the csvpn manager
 csvpn = service.MultiService()
 csvpn.addService(fetchmail_service)
 csvpn.addService(accounts_service)
 csvpn.addService(messages_service)
+csvpn.addService(greeter_service)
 
 application = service.Application("csvpn")
 csvpn.setServiceParent(application)
