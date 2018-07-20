@@ -273,7 +273,7 @@ class BaseService(internet.TimerService):
         internet.TimerService.stopService(self)
         log.info("SERVICE:: Service stopped.")
 
-class GreeterService(internet.TimerService):
+class GreetService(internet.TimerService):
     """
     Greeter service to notify when csvpn boots or shutdowns. It does nothing
     at all except send a message on startService and stopService.
