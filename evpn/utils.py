@@ -327,7 +327,7 @@ class GreetService(internet.TimerService):
         """
         log.info("SERVICE:: Starting {} service.".format(self.name))
         internet.TimerService.startService(self)
-        #self.slackbot.post("I am booting.", self.channel)
+        self.slackbot.post("I am booting.", self.channel)
         log.info("SERVICE:: Service started.")
 
     def stopService(self):
@@ -336,6 +336,6 @@ class GreetService(internet.TimerService):
         database, shutdown the service and add extra logging information.
         """
         log.info("SERVICE:: Stopping {} service.".format(self.name))
-        #self.slackbot.post("I am shutting down.", self.channel)
+        self.slackbot.post("I am shutting down.", self.channel)
         internet.TimerService.stopService(self)
         log.info("SERVICE:: Service stopped.")
