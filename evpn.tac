@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# This file is part of csvpn, a VPN manager for CivilSphere project.
+# This file is part of evpn, the Emergency VPN manager for CivilSphere project
 #
 # :authors: Israel Leiva <israel.leiva@usach.cl>
 #           see also AUTHORS file
@@ -16,11 +16,11 @@ import sys
 sys.path.insert(0, '.')
 
 # local imports
-from csvpn.smtp import Messages
-from csvpn.imap import Fetchmail
-from csvpn.slack import SlackBot
-from csvpn.accounts import Accounts
-from csvpn.utils import BaseService, GreetService, log
+from evpn.smtp import Messages
+from evpn.imap import Fetchmail
+from evpn.slack import SlackBot
+from evpn.accounts import Accounts
+from evpn.utils import BaseService, GreetService, log
 
 log.info("Loading config files.")
 fetchmail = Fetchmail('imap.cfg')
@@ -47,15 +47,15 @@ messages_service = BaseService(
 
 # Greeter service for notify on boot and shutdown
 greeter_service = GreetService(
-	"greeter", 100000, slackbot, "civilsphere"
+	"greeter", 100000, slackbot, "alerts"
 )
 
 # The heart of the csvpn manager
-csvpn = service.MultiService()
-csvpn.addService(fetchmail_service)
-csvpn.addService(accounts_service)
-csvpn.addService(messages_service)
-csvpn.addService(greeter_service)
+evpn = service.MultiService()
+evpn.addService(fetchmail_service)
+evpn.addService(accounts_service)
+evpn.addService(messages_service)
+evpn.addService(greeter_service)
 
-application = service.Application("csvpn")
-csvpn.setServiceParent(application)
+application = service.Application("evpn")
+evpn.setServiceParent(application)

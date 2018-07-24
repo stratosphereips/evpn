@@ -1,5 +1,5 @@
-# csvpn
-CivilSphere VPN manager. The goal of **csvpn** is to provide an automated way
+# evpn
+Emergency VPN manager. The goal of **evpn** is to provide an automated way
 of handling creation of *OpenVPN* accounts via email. The manager provides the
 following main functionalities:
 
@@ -9,11 +9,11 @@ following main functionalities:
   * Send mails via SMTP protocol.
   * Store accounts information in a SQLite database.
 
-**csvpn** is implemented in Python using the *Twisted* engine.
+**evpn** is implemented in Python using the *Twisted* engine.
 
 # Setup
-In addition to twisted, **csvpn** uses packages to perform DKIM and email
-addresses verification. Below are the steps to setup **csvpn** in a Debian
+In addition to twisted, **evpn** uses packages to perform DKIM and email
+addresses verification. Below are the steps to setup **evpn** in a Debian
 system considering the use of *virtualenv*:
 
 ```
@@ -24,21 +24,21 @@ $ (venv) pip install twisted pydkim pyopenssl dnspython validate_email
 ```
 
 # Usage
-**csvpn** runs using **twistd** as follows:
+**evpn** runs using **twistd** as follows:
 
 ```
-$ python create_db.py -c csvpn.db
-$ twistd -y csvpn.tac --logfile csvpn.log --pidfile csvpn.pid
+$ python create_db.py -c evpn.db
+$ twistd -y evpn.tac --logfile evpn.log --pidfile evpn.pid
 ```
 
-To stop it just kill it using its process ID stored in csvpn.pid. Once
-**csvpn** is running you can send an email to the defined email address
+To stop it just kill it using its process ID stored in evpn.pid. Once
+**evpn** is running you can send an email to the defined email address
 with the keywords **vpn** to request the creation of a new
 OpenVPN account. Any other keyword would be considered a help request
 about its usage, and the manager will reply with instructions.
 
 # Configuration
-**csvpn** is made up of three services. *Accounts*, *Fetchmail* and *Messages*
+**evpn** is made up of three services. *Accounts*, *Fetchmail* and *Messages*
 . Each service has its own configuration, described below.
 
 ## Accounts
@@ -61,7 +61,6 @@ capture of such accounts. Its configuration parameters are:
 **tcpdump**
 
     args: tcpdump list of arguments, separated by commas. It must include as first argument the path to tcpdump binary. It must also include the -i,interface arguments. An example of a list of arguments could be: /usr/sbin/tcpdump,-i,tun0,-n,-v. The list must not include the -w or host options.
-
 
 
 **network**
@@ -112,7 +111,7 @@ CivilSphere team. Its configuration parameters are:
     Email body for different messages sent by the manager.
 
 # Database
-**csvpn** uses an SQLite database to store information about new accounts. We 
+**evpn** uses an SQLite database to store information about new accounts. We 
 consider every new (valid) mail received as a request to create an OpenVPN
 account or to receive help about its usage, depending on the body of the
 message. The structure of the database is very simple, and it contains one
@@ -130,4 +129,4 @@ Usernames are built using the email address and current date. One email address 
 
 # License
 
-**csvpn** is Free Software. See LICENSE for more information.
+**evpn** is Free Software. See LICENSE for more information.
