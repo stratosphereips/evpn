@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# This file is part of csvpn, a vpn manager for CivilSphere project.
+# This file is part of evpn, the Emergency VPN manager for CivilSphere project
 #
 # :authors: Israel Leiva <israel.leiva@usach.cl>
 #           see also AUTHORS file
@@ -14,10 +14,11 @@ from twisted.enterprise import adbapi
 from twisted.application import internet
 
 # SQLite database for handling requests.
-DATABASE = 'csvpn.db'
+DATABASE = 'evpn.db'
+VERSION = '0.1-rc1'
 
 # Define an application logger
-log = Logger('csvpn')
+log = Logger('evpn')
 
 """
 Exception classes for different errors raised in services.
@@ -293,6 +294,23 @@ class GreetService(internet.TimerService):
         self.name = name
         self.slackbot = slackbot
         self.channel = channel
+
+        header = """
+                     ______     __   __   ______   __   __    
+                    /\  ___\   /\ \ / /  /\  == \ /\ "-.\ \   
+                    \ \  __\   \ \  \'/   \ \  _-/ \ \ \-.  \  
+                     \ \_____\  \ \__|    \ \_\    \ \_\ \"\_\ 
+                      \/_____/   \/_/      \/_/     \/_/ \/_/ 
+                                                     
+                             Emergency VPN Manager {}
+        """.format(VERSION)
+        print ""
+        print "@"*100
+        print "@"*100
+        print header
+        print "@"*100
+        print ""
+
         log.debug("SERVICE:: Initializing TimerService.")
         internet.TimerService.__init__(
             self, step, self.do_nothing, **kwargs
@@ -309,7 +327,7 @@ class GreetService(internet.TimerService):
         """
         log.info("SERVICE:: Starting {} service.".format(self.name))
         internet.TimerService.startService(self)
-        self.slackbot.post("I am booting.", self.channel)
+        #self.slackbot.post("I am booting.", self.channel)
         log.info("SERVICE:: Service started.")
 
     def stopService(self):
@@ -318,6 +336,6 @@ class GreetService(internet.TimerService):
         database, shutdown the service and add extra logging information.
         """
         log.info("SERVICE:: Stopping {} service.".format(self.name))
-        self.slackbot.post("I am shutting down.", self.channel)
+        #self.slackbot.post("I am shutting down.", self.channel)
         internet.TimerService.stopService(self)
         log.info("SERVICE:: Service stopped.")

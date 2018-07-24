@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# This file is part of csvpn, a vpn manager for CivilSphere project.
+# This file is part of evpn, the Emergency VPN manager for CivilSphere project
 #
 # :authors: Israel Leiva <israel.leiva@usach.cl>
 #           see also AUTHORS file

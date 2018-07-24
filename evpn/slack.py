@@ -1,7 +1,6 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# This file is part of csvpn, a vpn manager for CivilSphere project.
+# This file is part of evpn, the Emergency VPN manager for CivilSphere project
 #
 # :authors: Israel Leiva <israel.leiva@usach.cl>
 #           see also AUTHORS file
@@ -70,10 +69,11 @@ class SlackBot(object):
         """
         Callback with the output of the web request.
         """
-        log.debug("FILECHECKER:: Web request succesful: {}".format(output))
+        # don't log output
+        log.debug("SLACKBOT:: Web request succesful")
 
     def eb_get_page(self, error):
         """
         Errback if we don't/can't receive make the web request.
         """
-        log.debug("FILECHECKER:: Web request failed: {}".format(error))
+        log.debug("SLACKBOT:: Web request failed: {}".format(error))
