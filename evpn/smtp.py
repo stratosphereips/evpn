@@ -254,6 +254,7 @@ class Messages(Base):
                 for request in expired_accounts:
                     username = request[0]
                     email_addr = request[1]
+                    ip_addr = request[6]
                     log.info(
                         "SMTP:: Sending expiration message to {}.".format(
                             email_addr
