@@ -291,8 +291,8 @@ class Accounts(Base):
         pp = capture_processes[k]
         p = pp.get_process()
 
-        log.debug("ACCOUNTS:: Killing process with PID {}".format(str(p[1])))
-        p[0].transport.signalProcess("KILL")
+        log.debug("ACCOUNTS:: Killing process with PID {}".format(str(p.pid)))
+        pp.transport.signalProcess("KILL")
 
     def _revoke_user(self, username):
         """ Revoke OpenVPN user (certificate and key). """
