@@ -386,6 +386,7 @@ class Accounts(Base):
             for account in active_accounts:
                 username = account[0]
                 ip_addr = account[6]
+                yield self._update_status(username, "ACTIVE_IN_PROCESS")
                 k = "{}-{}".format(username, ip_addr)
                 if capture_processes.get(k) is None:
                     try:
@@ -407,6 +408,7 @@ class Accounts(Base):
                             )
                         )
                         yield self._update_status(username, "EXEC_ERROR")
+                    yield self._update_status(username, "ACTIVE")
                 else:
                     log.debug("ACCOUNTS:: No inactive captures.")
         else:
