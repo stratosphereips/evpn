@@ -99,6 +99,9 @@ class Accounts(Base):
         self.tcpdump_args = config.get('tcpdump', 'args')
         self.tcpdump_args = self.tcpdump_args.split(',')
 
+        # pcap summarizer args
+        self.sum_args = config.get('summarizer', 'args')
+
         # Network info to allocate ip addresses for new accounts
         self.netrange = config.get('network', 'range')
         self.netmask = config.get('network', 'mask')
@@ -241,7 +244,7 @@ class Accounts(Base):
     def _backup_pcap(self, username, ip_addr):
         """
         Backup existing pcap file. Used when restarting traffic capture for
-        ACTIVE accounts.
+        ACTIVE accounts and after the account expires.
 
         :param username (str): account username
         :param ip_addr (IPv4Address): IP address allocated for the account.
@@ -255,11 +258,18 @@ class Accounts(Base):
 
         day_month_str = datetime.now().strftime("%m%d")
         cur_pcap_file = "{}_{}.pcap".format(username, str(ip_addr))
+        new_path = os.path.join(
+            self.path['pcaps'], "{}-{}".format(username, str(ip_addr))
+        )
+        new_path_fp = FilePath(new_path)
+        if not new_path_fp.isdir():
+            new_path_fp.CreateDirectory()
+
         new_pcap_file = "{}_{}-{}.pcap".format(
             username, str(ip_addr), day_month_str
         )
         cur_pcap_file = os.path.join(self.path['pcaps'], cur_pcap_file)
-        new_pcap_file = os.path.join(self.path['pcaps'], new_pcap_file)
+        new_pcap_file = os.path.join(new_path, new_pcap_file)
         log.debug("ACCOUNTS:: Current pcap file {}".format(cur_pcap_file))
         log.debug("ACCOUNTS:: New pcap file {}".format(new_pcap_file))
 
@@ -351,6 +361,34 @@ class Accounts(Base):
         fp = FilePath(filename)
         revoked_fp = FilePath("{}.revoked".format(filename))
         fp.moveTo(revoked_fp)
+
+    def _run_summarizer(self, username, ip_addr):
+        """
+        Run summarizer on pcap files. This should be run after the account
+        has expired and pcap backups were made.
+
+        :param username (str): account username
+        :param ip_addr (IPv4Address): IP address allocated for the account.
+        """
+        log.debug(
+            "ACCOUNTS:: Running summarizer for {}-{}".format(
+                username, str(ip_addr)
+            )
+        )
+
+
+        pcaps_user = "{}-{}".format(username, str(ip_addr))
+        pcaps_user = os.path.join(self.path['pcaps'], pcaps_user)
+
+        # pcap summarizer args
+        sum_args = []
+        sum_args.extend(self.sum_args)
+        sum_args.extend([pcaps_user])
+
+        pp = protocol.ProcessProtocol()
+        p = self.reactor.spawnProcess(
+            pp, sum_args[0], args=sum_args, env=os.environ,
+        )
 
     def _get_expired_requests(self):
         """
@@ -530,6 +568,9 @@ class Accounts(Base):
                     # ExecError in case of failure
                     yield self._revoke_user(username)
                     yield self._delete_ipfile(username)
+                    # Post processing of pcap file
+                    yield self._backup_pcap(username, ip)
+                    yield self._run_summarizer(username, ip)
                     yield self._update_status(username, "EXPIRED_PENDING")
 
                     msg = "VPN account {} revoked and set to expired.".format(
