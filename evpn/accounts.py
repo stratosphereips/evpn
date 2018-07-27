@@ -238,6 +238,35 @@ class Accounts(Base):
         fp = FilePath(ip_filename)
         fp.chmod(0644)
 
+    def _backup_pcap(self, username, ip_addr):
+        """
+        Backup existing pcap file. Used when restarting traffic capture for
+        ACTIVE accounts.
+
+        :param username (str): account username
+        :param ip_addr (IPv4Address): IP address allocated for the account.
+
+        """
+        log.debug(
+            "ACCOUNTS:: Backing up pcap for {} with IP {}.".format(
+                username, str(ip_addr)
+            )
+        )
+
+        day_month_str = datetime.now().strftime("%m%d")
+        cur_pcap_file = "{}_{}.pcap".format(username, str(ip_addr))
+        new_pcap_file = "{}_{}-{}.pcap".format(
+            username, str(ip_addr), day_month_str
+        )
+        cur_pcap_file = os.path.join(self.path['pcaps'], cur_pcap_file)
+        new_pcap_file = os.path.join(self.path['pcaps'], new_pcap_file)
+        log.debug("ACCOUNTS:: Current pcap file {}".format(cur_pcap_file))
+        log.debug("ACCOUNTS:: New pcap file {}".format(new_pcap_file))
+
+        fp = FilePath(cur_pcap_file)
+        backup_fp = FilePath(new_pcap_file)
+        fp.moveTo(backup_fp)
+
     def _start_traffic_capture(self, username, ip_addr):
         """
         Start traffic capture.
@@ -390,6 +419,8 @@ class Accounts(Base):
                 k = "{}-{}".format(username, ip_addr)
                 if capture_processes.get(k) is None:
                     try:
+                        # tcpdump -w truncates the pcap file, so backup first
+                        yield self._backup_pcap(username, ip_addr)
                         # ExecError in case of failure
                         yield self._start_traffic_capture(username, ip_addr)
                         self.allocated_ips.append(ip_addr)
