@@ -14,6 +14,7 @@ import os
 from urllib import urlencode
 from ConfigParser import ConfigParser
 
+from twisted.internet import defer
 from twisted.web.client import getPage
 
 # local imports
@@ -41,6 +42,10 @@ class SlackBot(object):
         self.token = config.get('credentials', 'token')
         self.botname = config.get('credentials', 'botname')
 
+        # General
+        # Use this when testing or staging
+        self.silent = config.get('general', 'silent')
+
     def post(self, text, channel):
         """
         Post message to a Slack channel.
@@ -49,21 +54,26 @@ class SlackBot(object):
         :param channel (str): the destination channel.
         """
         log.debug("SLACKBOT:: Sending message to {}".format(channel))
-
-        return getPage(
-            "https://slack.com/api/chat.postMessage",
-            method='POST',
-            postdata=urlencode({
-                "token": self.token,
-                "channel": channel,
-                "username": self.botname,
-                "text": text
-            }),
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "charset": "utf-8"
-            }
-        ).addCallback(self.cb_get_page).addErrback(self.eb_get_page)
+        # Useful for testing and staging
+        if self.silent:
+            d = defer.Deferred()
+            d.addBoth(lambda: None)
+            return d
+        else:
+            return getPage(
+                "https://slack.com/api/chat.postMessage",
+                method='POST',
+                postdata=urlencode({
+                    "token": self.token,
+                    "channel": channel,
+                    "username": self.botname,
+                    "text": text
+                }),
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "charset": "utf-8"
+                }
+            ).addCallback(self.cb_get_page).addErrback(self.eb_get_page)
 
     def cb_get_page(self, output):
         """
