@@ -55,7 +55,7 @@ class SlackBot(object):
         """
         log.debug("SLACKBOT:: Sending message to {}".format(channel))
         # Useful for testing and staging
-        if self.silent:
+        if self.silent == "true":
             d = defer.Deferred()
             d.addBoth(lambda: None)
             return d
