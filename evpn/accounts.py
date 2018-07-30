@@ -362,7 +362,7 @@ class Accounts(Base):
         revoked_fp = FilePath("{}.revoked".format(filename))
         fp.moveTo(revoked_fp)
 
-    def _run_summarizer(self, username, ip_addr):
+    def _run_pcapsummarizer(self, username, ip_addr):
         """
         Run summarizer on pcap files. This should be run after the account
         has expired and pcap backups were made.
@@ -371,11 +371,10 @@ class Accounts(Base):
         :param ip_addr (IPv4Address): IP address allocated for the account.
         """
         log.debug(
-            "ACCOUNTS:: Running summarizer for {}-{}".format(
+            "ACCOUNTS:: Running pcapsummarizer for {}-{}".format(
                 username, str(ip_addr)
             )
         )
-
 
         pcaps_user = "{}-{}".format(username, str(ip_addr))
         pcaps_user = os.path.join(self.path['pcaps'], pcaps_user)
@@ -570,7 +569,7 @@ class Accounts(Base):
                     yield self._delete_ipfile(username)
                     # Post processing of pcap file
                     yield self._backup_pcap(username, ip)
-                    yield self._run_summarizer(username, ip)
+                    yield self._run_pcapsummarizer(username, ip)
                     yield self._update_status(username, "EXPIRED_PENDING")
 
                     msg = "VPN account {} revoked and set to expired.".format(
