@@ -276,6 +276,7 @@ class Fetchmail(Base):
                     log.info("IMAP:: Invalid email address: {}.".format(e))
                 except DkimError as e:
                     log.info("IMAP:: DKIM error: {}.".format(e))
+                    yield self.slackbot.post(str(e), self.slack_channel)
 
                 yield self.slackbot.post("Got new mail!", self.slack_channel)
                 log.info("IMAP:: Mail processed.")
@@ -343,7 +344,8 @@ class Fetchmail(Base):
             log.info("IMAP:: Valid DKIM signature.")
         else:
             log.info("IMAP:: Invalid DKIM headers.")
-            raise DkimError("DKIM verification failed")
+            username, domain = norm_addr.split("@")
+            raise DkimError("DKIM verification failed for {}".format(domain))
 
         # For parsing we just search for `vpn account` keywords.
         command = "help"
