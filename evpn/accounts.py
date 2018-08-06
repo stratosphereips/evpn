@@ -263,7 +263,7 @@ class Accounts(Base):
         )
         new_path_fp = FilePath(new_path)
         if not new_path_fp.isdir():
-            new_path_fp.CreateDirectory()
+            new_path_fp.createDirectory()
 
         new_pcap_file = "{}-{}_{}.pcap".format(
             username, str(ip_addr), day_month_str
