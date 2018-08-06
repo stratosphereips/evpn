@@ -257,7 +257,7 @@ class Accounts(Base):
         )
 
         day_month_str = datetime.now().strftime("%m%d")
-        cur_pcap_file = "{}_{}.pcap".format(username, str(ip_addr))
+        cur_pcap_file = "{}-{}.pcap".format(username, str(ip_addr))
         new_path = os.path.join(
             self.path['pcaps'], "{}-{}".format(username, str(ip_addr))
         )
@@ -265,7 +265,7 @@ class Accounts(Base):
         if not new_path_fp.isdir():
             new_path_fp.CreateDirectory()
 
-        new_pcap_file = "{}_{}-{}.pcap".format(
+        new_pcap_file = "{}-{}_{}.pcap".format(
             username, str(ip_addr), day_month_str
         )
         cur_pcap_file = os.path.join(self.path['pcaps'], cur_pcap_file)
