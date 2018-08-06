@@ -353,6 +353,7 @@ class Fetchmail(Base):
         
         command = "help"
         if subject:
+            subject = subject.group(1)
             for word in re.split(r"\s+", subject.strip()):
                 if word.lower() == "vpn":
                     command = "account"
