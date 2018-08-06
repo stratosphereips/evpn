@@ -347,13 +347,21 @@ class Fetchmail(Base):
             username, domain = norm_addr.split("@")
             raise DkimError("DKIM verification failed for {}".format(domain))
 
-        # For parsing we just search for `vpn account` keywords.
+        # For parsing we just search for `vpn` keyword.
+        subject_re = re.compile(r"Subject: (.*)\r\n")
+        subject = subject_re.search(headers_str)
+        
         command = "help"
-        words = re.split(r"\s+", body_str.strip())
-        for word in words:
-            if word.lower() == "vpn":
-                command = "account"
-                break
+        if subject:
+            for word in re.split(r"\s+", subject.strip()):
+                if word.lower() == "vpn":
+                    command = "account"
+
+        if command is not "account":
+            for word in re.split(r"\s+", body_str.strip()):
+                if word.lower() == "vpn":
+                    command = "account"
+                    break
 
         log.debug("IMAP:: Email body content parsed.")
         if command == 'account':
