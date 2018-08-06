@@ -479,6 +479,7 @@ class Accounts(Base):
                     yield self._update_status(username, "ACTIVE")
                 else:
                     log.debug("ACCOUNTS:: No inactive captures.")
+                    yield self._update_status(username, "ACTIVE")
         else:
             log.debug("ACCOUNTS:: No ACTIVE accounts found.")
 
