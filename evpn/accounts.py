@@ -256,7 +256,7 @@ class Accounts(Base):
             )
         )
 
-        day_month_str = datetime.now().strftime("%m%d")
+        day_month_str = datetime.now().strftime("%m%d%H%M")
         cur_pcap_file = "{}_{}.pcap".format(username, str(ip_addr))
         new_path = os.path.join(
             self.path['pcaps'], "{}_{}".format(username, str(ip_addr))
