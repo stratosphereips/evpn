@@ -462,7 +462,8 @@ class Accounts(Base):
                         # ExecError in case of failure
                         yield self._start_traffic_capture(username, ip_addr)
                         self.allocated_ips.append(ip_addr)
-
+                        yield self._update_status(username, "ACTIVE")
+                        
                         # Notify
                         yield self.slackbot.post(
                             "Restarting tcpdump for {} with IP {}".format(
@@ -477,7 +478,6 @@ class Accounts(Base):
                             )
                         )
                         yield self._update_status(username, "EXEC_ERROR")
-                    yield self._update_status(username, "ACTIVE")
                 else:
                     log.debug("ACCOUNTS:: No inactive captures.")
                     yield self._update_status(username, "ACTIVE")
