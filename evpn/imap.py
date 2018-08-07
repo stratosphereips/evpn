@@ -143,6 +143,8 @@ class Fetchmail(Base):
 
         # Time interval for the service loop (in seconds)
         self.interval = float(config.get('general', 'interval'))
+        # Enforce DKIM check or not
+        self.dkim = config.get('general', 'dkim')
 
         Base.__init__(self)
 
@@ -337,15 +339,16 @@ class Fetchmail(Base):
 
         # DKIM verification. Simply check that the server has verified the
         # message's signature
-        log.info("IMAP:: Checking DKIM signature.")
-        # Note: msg.as_string() changes the message to conver it to string, so
-        # DKIM will fail. Use the original string istead
-        if dkim.verify(msg_str):
-            log.info("IMAP:: Valid DKIM signature.")
-        else:
-            log.info("IMAP:: Invalid DKIM headers.")
-            username, domain = norm_addr.split("@")
-            raise DkimError("DKIM verification failed for {}".format(domain))
+        if self.dkim == "true":
+            log.info("IMAP:: Checking DKIM signature.")
+            # Note: msg.as_string() changes the message to conver it to
+            # string, so DKIM will fail. Use the original string istead
+            if dkim.verify(msg_str):
+                log.info("IMAP:: Valid DKIM signature.")
+            else:
+                log.info("IMAP:: Invalid DKIM headers.")
+                username, domain = norm_addr.split("@")
+                raise DkimError("DKIM verification failed {}".format(domain))
 
         # For parsing we just search for `vpn` keyword.
         subject_re = re.compile(r"Subject: (.*)\r\n")
