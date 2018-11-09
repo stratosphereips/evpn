@@ -277,6 +277,7 @@ class Accounts(Base):
         fp = FilePath(cur_pcap_file)
         backup_fp = FilePath(new_pcap_file)
         fp.moveTo(backup_fp)
+        backup_fp.chmod(0654)
 
     def _start_traffic_capture(self, username, ip_addr):
         """
