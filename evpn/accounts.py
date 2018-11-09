@@ -10,6 +10,7 @@
 # :license: This is Free Software. See LICENSE for license information.
 
 import os
+import re
 
 from ipaddress import ip_network
 from datetime import datetime, timedelta
@@ -378,7 +379,7 @@ class Accounts(Base):
             )
         )
 
-        pcaps_user = "{}-{}".format(username, str(ip_addr))
+        pcaps_user = "{}_{}".format(username, str(ip_addr))
         pcaps_user = os.path.join(self.path['pcaps'], pcaps_user)
 
         # pcap summarizer args
@@ -391,7 +392,30 @@ class Accounts(Base):
             pp, sum_args[0], args=sum_args, env=os.environ,
         )
 
-    def _get_expired_requests(self):
+    def _get_capinfos(self, username, ip_addr):
+        """
+        Get capinfos of user's pcap. This should be run afte the account
+        has expired and after executing pcapsummarizer on the user's 
+        directory.
+
+        :param username (str): account username
+        :param ip_addr (IPv4Address): IP address allocated for the account.
+
+        :return: String with capinfos content.
+        """
+        user_dir = "{}_{}".format(username, str(ip_addr))
+        user_dir = os.path.join(self.path['pcaps'], user_dir)
+        msg = "Summary:\n"
+
+        for f in user_dir.listdir():
+            if re.match(f.basename(), ".*\.capinfos"):
+                capinfos = f.getContent()
+                msg = "{}\n{}".format(msg, capinfos)
+
+        return msg
+
+
+    def _get_active_expired_requests(self):
         """
         Get requests with status ACTIVE which expiration date is before than
         current date.
@@ -405,6 +429,22 @@ class Accounts(Base):
         log.debug("ACCOUNTS:: Asking for active accounts that have expired.")
 
         return self.dbpool.runQuery(query, ("ACTIVE", now_str)).\
+            addCallback(self.cb_db_query).\
+            addErrback(self.eb_db_query)
+
+    def _get_expired_requests(self):
+        """
+        Get requests with status EXPIRED.
+
+        :return: deferred whose callback/errback will log database query
+        execution details.
+        """
+        query = 'select * from requests where status=?'
+
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        log.debug("ACCOUNTS:: Asking for expired accounts.")
+
+        return self.dbpool.runQuery(query, ("EXPIRED")).\
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
@@ -558,11 +598,11 @@ class Accounts(Base):
         else:
             log.info("ACCOUNTS:: No requests - Keep waiting.")
 
-        # Check for expired accounts
-        expired = yield self._get_expired_requests()
-        if expired:
-            log.info("ACCOUNTS:: Got expired accounts.")
-            for request in expired:
+        # Check for active expired accounts
+        active_expired = yield self._get_active_expired_requests()
+        if active_expired:
+            log.info("ACCOUNTS:: Got active accounts that have expired.")
+            for request in active_expired:
                 try:
                     username, ip = request[0], request[6]
                     yield self._update_status(username, "EXPIRED_IN_PROCESS")
@@ -580,6 +620,35 @@ class Accounts(Base):
                     )
                     log.info("ACCOUNTS:: {}".format(msg))
 
+                    # Notify
+                    yield self.slackbot.post(msg, self.slack_channel)
+
+                except ExecError as error:
+                    log.info(
+                        "ACCOUNTS:: Error executing system command.".format(
+                            error
+                        )
+                    )
+                    yield self._update_status(username, "EXEC_ERROR")
+        else:
+            log.debug("ACCOUNTS:: No active expired accounts - Keep waiting.")
+
+        # Check for expired accounts
+        expired = yield self._get_expired_requests()
+        if expired:
+            log.info("ACCOUNTS:: Got expired accounts.")
+            for request in expired:
+                try:
+                    username, ip = request[0], request[6]
+                    capinfos = yield self._get_capinfos(username, ip)
+                    yield self._update_status(username, "PROCESSED")
+
+                    log.info("ACCOUNTS:: Sending {} summary to slack".format(
+                            username
+                        )
+                    )
+
+                    msg = "{}".format(capinfos)
                     # Notify
                     yield self.slackbot.post(msg, self.slack_channel)
 
