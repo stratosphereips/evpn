@@ -405,9 +405,10 @@ class Accounts(Base):
         """
         user_dir = "{}_{}".format(username, str(ip_addr))
         user_dir = os.path.join(self.path['pcaps'], user_dir)
-        msg = "Summary:\n"
+        fp = FilePath(user_dir)
 
-        for f in user_dir.listdir():
+        msg = "Summary:\n"
+        for f in fp.listdir():
             if re.match(f.basename(), ".*\.capinfos"):
                 capinfos = f.getContent()
                 msg = "{}\n{}".format(msg, capinfos)
