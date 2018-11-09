@@ -354,17 +354,24 @@ class Fetchmail(Base):
         subject_re = re.compile(r"Subject: (.*)\r\n")
         subject = subject_re.search(headers_str)
         
-        command = "help"
+        command = ""
         if subject:
             subject = subject.group(1)
             for word in re.split(r"\s+", subject.strip()):
                 if word.lower() == "vpn":
                     command = "account"
+                    break
+                elif word.lower() == "help":
+                    command = "help"
+                    break
 
         if command is not "account":
             for word in re.split(r"\s+", body_str.strip()):
                 if word.lower() == "vpn":
                     command = "account"
+                    break
+                elif word.lower() == "help":
+                    command = "help"
                     break
 
         log.debug("IMAP:: Email body content parsed.")
