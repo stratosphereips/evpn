@@ -444,7 +444,7 @@ class Accounts(Base):
         now_str = datetime.now().strftime("%Y-%m-%d")
         log.debug("ACCOUNTS:: Asking for expired accounts.")
 
-        return self.dbpool.runQuery(query, ("EXPIRED")).\
+        return self.dbpool.runQuery(query, ("EXPIRED",)).\
             addCallback(self.cb_db_query).\
             addErrback(self.eb_db_query)
 
