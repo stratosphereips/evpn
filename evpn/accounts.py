@@ -409,8 +409,9 @@ class Accounts(Base):
 
         msg = "Summary:\n"
         for f in user_dir_fp.listdir():
-            fp = FilePath(f)
-            if re.match(fp.basename(), ".*\.capinfos"):
+            filename = os.path.join(user_dir, f)
+            fp = FilePath(filename)
+            if re.match(".*\.capinfos$", fp.basename()):
                 capinfos = fp.getContent()
                 msg = "{}\n{}".format(msg, capinfos)
 
