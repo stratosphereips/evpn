@@ -35,7 +35,7 @@ class CustomProcessProtocol(protocol.ProcessProtocol):
     Custom class to handle Process Protocol behaviour. Right now mostly for
     logging purposes.
     """
-    def __init__(self, username, ip_addr):
+    def __init__(self, username=None, ip_addr=None):
         self.username = username
         self.ip_addr = ip_addr
 
@@ -381,6 +381,7 @@ class Accounts(Base):
 
         pcaps_user = "{}_{}".format(username, str(ip_addr))
         pcaps_user = os.path.join(self.path['pcaps'], pcaps_user)
+
 
         # pcap summarizer args
         sum_args = []
