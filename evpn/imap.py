@@ -418,7 +418,7 @@ class Fetchmail(Base):
                     "ONHOLD"
                 )
             ).addCallback(self.cb_db_query).addErrback(self.eb_db_query)
-        else:
+        elif request['command'] == "help":
             log.debug("IMAP:: Inserting new request with status HELP_PENDING.")
             return self.dbpool.runQuery(
                 query, (
