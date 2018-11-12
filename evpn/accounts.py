@@ -409,15 +409,14 @@ class Accounts(Base):
         user_dir = os.path.join(self.path['pcaps'], user_dir)
         user_dir_fp = FilePath(user_dir)
 
-        msg = None
         for f in user_dir_fp.listdir():
             filename = os.path.join(user_dir, f)
             fp = FilePath(filename)
             if re.match(".*\.capinfos$", fp.basename()):
                 capinfos = fp.getContent()
-                msg = "{}\n{}".format(msg, capinfos)
+                return capinfos
 
-        return msg
+        return None
 
 
     def _get_active_expired_requests(self):
