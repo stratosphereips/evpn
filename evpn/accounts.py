@@ -102,6 +102,7 @@ class Accounts(Base):
 
         # pcap summarizer args
         self.sum_args = config.get('summarizer', 'args')
+        self.sum_args = self.sum_args.split(',')
 
         # Network info to allocate ip addresses for new accounts
         self.netrange = config.get('network', 'range')
@@ -408,7 +409,7 @@ class Accounts(Base):
         user_dir = os.path.join(self.path['pcaps'], user_dir)
         user_dir_fp = FilePath(user_dir)
 
-        msg = "Summary:\n"
+        msg = None
         for f in user_dir_fp.listdir():
             filename = os.path.join(user_dir, f)
             fp = FilePath(filename)
@@ -645,16 +646,17 @@ class Accounts(Base):
                 try:
                     username, ip = request[0], request[6]
                     capinfos = yield self._get_capinfos(username, ip)
-                    yield self._update_status(username, "PROCESSED")
+                    if capinfos is not None:
+                        yield self._update_status(username, "PROCESSED")
 
-                    log.info("ACCOUNTS:: Sending {} summary to slack".format(
-                            username
+                        log.info("ACCOUNTS:: Sending {} info to slack".format(
+                                username
+                            )
                         )
-                    )
 
-                    msg = "{}".format(capinfos)
-                    # Notify
-                    yield self.slackbot.post(msg, self.slack_channel)
+                        msg = "{}".format(capinfos)
+                        # Notify
+                        yield self.slackbot.post(msg, self.slack_channel)
 
                 except ExecError as error:
                     log.info(
