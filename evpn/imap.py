@@ -403,7 +403,7 @@ class Fetchmail(Base):
         # Generate username based on email prefix and current date.
         username, domain = request['email_addr'].split('@')
         now_str = datetime.now().strftime("%Y%m%d%H%M%S")
-        username = "{}-{}".format(username, now_str)
+        username = "{}-{}".format(now_str, username)
 
         # Account requests are set to ONHOLD to be processed by the Accounts
         # serice. Help requests are set to HELP_PENDING to be processed by the
