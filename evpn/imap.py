@@ -350,8 +350,6 @@ class Fetchmail(Base):
                 log.info("IMAP:: Invalid DKIM headers for {}-{}.".format(
                     username, domain
                 )
-                         
-                raise DkimError("DKIM verification failed {}".format(domain))
 
         # For parsing we just search for `vpn` keyword.
         subject_re = re.compile(r"Subject: (.*)\r\n")
