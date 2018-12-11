@@ -347,8 +347,10 @@ class Fetchmail(Base):
                 log.info("IMAP:: Valid DKIM signature.")
             else:
                 username, domain = norm_addr.split("@")
-                log.info("IMAP:: Invalid DKIM headers for {}-{}.".format(
-                    username, domain
+                log.info(
+                    "IMAP:: Invalid DKIM headers for {}-{}.".format(
+                        username, domain
+                    )
                 )
 
         # For parsing we just search for `vpn` keyword.
