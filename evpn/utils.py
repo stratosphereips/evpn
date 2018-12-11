@@ -15,7 +15,7 @@ from twisted.application import internet
 
 # SQLite database for handling requests.
 DATABASE = 'evpn.db'
-VERSION = '0.1-rc1'
+VERSION = '0.1-stable'
 
 # Define an application logger
 log = Logger('evpn')
