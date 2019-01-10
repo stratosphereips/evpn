@@ -9,16 +9,23 @@
 #
 # :license: This is Free Software. See LICENSE for license information.
 
+import json
+
 from twisted.logger import Logger
 from twisted.enterprise import adbapi
 from twisted.application import internet
 
 # SQLite database for handling requests.
 DATABASE = 'evpn.db'
-VERSION = '0.1-stable'
+VERSION = '0.2-rc'
+WORDS_JSON = 'words.json'
 
 # Define an application logger
 log = Logger('evpn')
+
+# Load words into memory
+with open(WORDS_JSON) as f:
+    ENGLISH_WORDS = json.load(f)
 
 """
 Exception classes for different errors raised in services.

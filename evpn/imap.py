@@ -11,6 +11,7 @@
 
 import re
 import dkim
+import random
 import validate_email
 
 from datetime import datetime
@@ -26,7 +27,7 @@ from twisted.internet import ssl, defer, stdio, protocol, endpoints
 
 # local imports
 from slack import SlackBot
-from utils import log, Base, AddressError, DkimError
+from utils import log, Base, AddressError, DkimError, ENGLISH_WORDS
 
 
 """
@@ -403,10 +404,11 @@ class Fetchmail(Base):
 
         query = "insert into requests values(?, ?, ?, '', '', ?, '')"
 
-        # Generate username based on email prefix and current date.
-        username, domain = request['email_addr'].split('@')
+        # Generate username based on random words and current date.
+        word1 = random.choice(ENGLISH_WORDS)
+        word2 = random.choice(ENGLISH_WORDS)
         now_str = datetime.now().strftime("%Y%m%d%H%M%S")
-        username = "{}-{}".format(now_str, username)
+        username = "{}-{}_{}".format(now_str, word1, word2)
 
         # Account requests are set to ONHOLD to be processed by the Accounts
         # serice. Help requests are set to HELP_PENDING to be processed by the
