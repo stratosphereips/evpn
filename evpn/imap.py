@@ -414,8 +414,8 @@ class Fetchmail(Base):
         query = "insert into requests values(?, ?, ?, '', '', ?, '')"
 
         # Generate username based on random words and current date.
-        word1 = random.choice(ENGLISH_WORDS)
-        word2 = random.choice(ENGLISH_WORDS)
+        word1 = random.choice(ENGLISH_WORDS['data'])
+        word2 = random.choice(ENGLISH_WORDS['data'])
         now_str = datetime.now().strftime("%Y%m%d%H%M%S")
         username = "{}-{}_{}".format(now_str, word1, word2)
 
