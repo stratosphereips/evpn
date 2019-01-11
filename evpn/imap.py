@@ -341,7 +341,7 @@ class Fetchmail(Base):
             log.debug("IMAP:: Ignoring message from {}".format(norm_addr))
             raise AddressError("Email address in whitelist")
 
-        if self.to_address:
+        if self.to_addr:
             if self.to_addr != to_norm_addr:
                 log.debug("Received request for other instance of evpn.")
                 log.debug("Intended recipient: {}".format(to_norm_addr))
