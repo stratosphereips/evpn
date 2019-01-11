@@ -146,6 +146,8 @@ class Fetchmail(Base):
         self.interval = float(config.get('general', 'interval'))
         # Enforce DKIM check or not
         self.dkim = config.get('general', 'dkim')
+        # To address. Useful for setting up testing environments with aliases
+        self.to_addr = config.get('general', 'to_addr')
 
         Base.__init__(self)
 
@@ -320,6 +322,7 @@ class Fetchmail(Base):
         # Normalization will convert <Alice Wonderland> alice@wonderland.net
         # to alice@wonderland.net
         name, norm_addr = parseaddr(msg['From'])
+        to_name, to_norm_addr = parseaddr(msg['To'])
         log.debug("IMAP:: Normalizing and validating {}.".format(msg['From']))
 
         # Validate_email will do a bunch of regexp to see if the email address
@@ -337,6 +340,12 @@ class Fetchmail(Base):
         if norm_addr in whitelist:
             log.debug("IMAP:: Ignoring message from {}".format(norm_addr))
             raise AddressError("Email address in whitelist")
+
+        if self.to_address:
+            if self.to_addr != to_norm_addr:
+                log.debug("Received request for other instance of evpn.")
+                log.debug("Intended recipient: {}".format(to_norm_addr))
+                return {}
 
         # DKIM verification. Simply check that the server has verified the
         # message's signature
