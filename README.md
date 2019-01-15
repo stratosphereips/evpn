@@ -128,7 +128,7 @@ table *requests* with the following columns:
     status: account's status.
     ip_addr: IP address allocated in OpenVPN for the account.
 
-Usernames are built using the email address and current date. One email address can have multiple accounts.
+Usernames are built using two random (English words). One email address can have multiple accounts.
 
 # License
 
