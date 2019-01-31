@@ -17,7 +17,7 @@ from twisted.application import internet
 
 # SQLite database for handling requests.
 DATABASE = 'evpn.db'
-VERSION = '0.2-rc'
+VERSION = '0.2'
 WORDS_JSON = 'words.json'
 
 # Define an application logger
