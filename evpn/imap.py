@@ -11,6 +11,7 @@
 
 import re
 import dkim
+import random
 import validate_email
 
 from datetime import datetime
@@ -26,7 +27,7 @@ from twisted.internet import ssl, defer, stdio, protocol, endpoints
 
 # local imports
 from slack import SlackBot
-from utils import log, Base, AddressError, DkimError
+from utils import log, Base, AddressError, DkimError, ENGLISH_WORDS
 
 
 """
@@ -145,6 +146,8 @@ class Fetchmail(Base):
         self.interval = float(config.get('general', 'interval'))
         # Enforce DKIM check or not
         self.dkim = config.get('general', 'dkim')
+        # To address. Useful for setting up testing environments with aliases
+        self.to_addr = config.get('general', 'to_addr')
 
         Base.__init__(self)
 
@@ -319,6 +322,7 @@ class Fetchmail(Base):
         # Normalization will convert <Alice Wonderland> alice@wonderland.net
         # to alice@wonderland.net
         name, norm_addr = parseaddr(msg['From'])
+        to_name, to_norm_addr = parseaddr(msg['To'])
         log.debug("IMAP:: Normalizing and validating {}.".format(msg['From']))
 
         # Validate_email will do a bunch of regexp to see if the email address
@@ -336,6 +340,12 @@ class Fetchmail(Base):
         if norm_addr in whitelist:
             log.debug("IMAP:: Ignoring message from {}".format(norm_addr))
             raise AddressError("Email address in whitelist")
+
+        if self.to_addr:
+            if self.to_addr != to_norm_addr:
+                log.debug("Received request for other instance of evpn.")
+                log.debug("Intended recipient: {}".format(to_norm_addr))
+                return {}
 
         # DKIM verification. Simply check that the server has verified the
         # message's signature
@@ -403,10 +413,11 @@ class Fetchmail(Base):
 
         query = "insert into requests values(?, ?, ?, '', '', ?, '')"
 
-        # Generate username based on email prefix and current date.
-        username, domain = request['email_addr'].split('@')
+        # Generate username based on random words and current date.
+        word1 = random.choice(ENGLISH_WORDS['data'])
+        word2 = random.choice(ENGLISH_WORDS['data'])
         now_str = datetime.now().strftime("%Y%m%d%H%M%S")
-        username = "{}-{}".format(now_str, username)
+        username = "{}-{}_{}".format(now_str, word1, word2)
 
         # Account requests are set to ONHOLD to be processed by the Accounts
         # serice. Help requests are set to HELP_PENDING to be processed by the

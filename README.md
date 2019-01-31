@@ -76,6 +76,7 @@ configuration parameters are:
 **general**
 
     interval: time interval (in seconds) of the service's main loop.
+    to_addr: email addresses used by the evpn daemon. This allos to setup separate instances with different addresses (for testing)
 
 **credentials**
 
@@ -84,6 +85,8 @@ configuration parameters are:
     username: email account username.
     password: email account password.
     mbox: Mailbox from where to fetch new emails (e.g. INBOX).
+
+Using different *to_addr* and/or *mbox* parameters is an easy way to setup a testing environment different from production. For example, when using Gmail (e.g. *vpn@yourdomain.tld*), you can create a filter that will redirect everything received at *vpn+testing@yourdomain.tld* to a separate folder (archiving first from *INBOX*). This allows to have one Gmail address that would process emails differently depending on which address you use for receiving email requests.
 
 ## Messages
 This service is on charge of sending emails to accounts users and the
@@ -125,7 +128,7 @@ table *requests* with the following columns:
     status: account's status.
     ip_addr: IP address allocated in OpenVPN for the account.
 
-Usernames are built using the email address and current date. One email address can have multiple accounts.
+Usernames are built using two random (English words). One email address can have multiple accounts.
 
 # License
 

@@ -15,7 +15,7 @@ import argparse
 
 from datetime import datetime, timedelta
 
-VERSION = "0.1-stable"
+VERSION = "0.2"
 
 def print_header():
 	header = """

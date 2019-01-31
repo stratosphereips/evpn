@@ -15,7 +15,7 @@ import sys
 import sqlite3
 import argparse
 
-VERSION = "0.1-stable"
+VERSION = "0.2"
 
 def print_header():
     header = """
