@@ -27,7 +27,7 @@ $ (venv) pip install twisted pydkim pyopenssl dnspython validate_email
 **evpn** runs using **twistd** as follows:
 
 ```
-$ python create_db.py -c evpn.db
+$ python create_db.py -d evpn.db
 $ twistd -y evpn.tac --logfile evpn.log --pidfile evpn.pid
 ```
 
