@@ -1,4 +1,6 @@
 # evpn
+The Emergency VPN is a service by the Civilsphere Project, Stratosphere Laboratory at the Czech Technical University in Prague.
+
 Emergency VPN manager. The goal of **evpn** is to provide an automated way
 of handling creation of *OpenVPN* accounts via email. The manager provides the
 following main functionalities:
